@@ -6,60 +6,64 @@ public protocol SessionLocking: Sendable {
 
 public enum SessionLockError: Error, Equatable, Sendable, CustomStringConvertible {
     case unavailable(String)
-    case launchFailed(String)
-    case commandFailed(Int32)
+    case symbolMissing(String)
+    case lockRequestFailed(Int32)
 
     public var description: String {
         switch self {
-        case .unavailable(let path):
-            return "Lock helper is unavailable at \(path)"
-        case .launchFailed(let message):
-            return "Unable to launch lock helper: \(message)"
-        case .commandFailed(let status):
-            return "Lock helper exited with status \(status)"
+        case .unavailable(let message):
+            return "macOS lock framework unavailable: \(message)"
+        case .symbolMissing(let symbol):
+            return "macOS lock symbol is unavailable: \(symbol)"
+        case .lockRequestFailed(let status):
+            return "macOS lock request failed with status \(status)"
         }
     }
 }
 
 #if os(macOS)
-public struct MacCGSessionLocker: SessionLocking {
-    public static let defaultExecutablePath = "/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession"
+import Darwin
 
-    private let executableURL: URL
+public struct MacLoginFrameworkSessionLocker: SessionLocking {
+    public static let frameworkPath = "/System/Library/PrivateFrameworks/login.framework/Versions/A/login"
+    public static let lockSymbol = "SACLockScreenImmediate"
 
-    public init(executableURL: URL = URL(fileURLWithPath: Self.defaultExecutablePath)) {
-        self.executableURL = executableURL
+    private typealias LockFunction = @convention(c) () -> Int32
+
+    public init() {}
+
+    public static var isAvailable: Bool {
+        guard let handle = dlopen(frameworkPath, RTLD_LAZY | RTLD_LOCAL) else {
+            return false
+        }
+        defer { dlclose(handle) }
+        return dlsym(handle, lockSymbol) != nil
     }
 
     public func lock() async throws {
-        let executableURL = self.executableURL
-        guard FileManager.default.isExecutableFile(atPath: executableURL.path) else {
-            throw SessionLockError.unavailable(executableURL.path)
-        }
-
         try await Task.detached(priority: .userInitiated) {
-            let process = Process()
-            process.executableURL = executableURL
-            process.arguments = ["-suspend"]
-            process.standardOutput = FileHandle.nullDevice
-            process.standardError = FileHandle.nullDevice
+            guard let handle = dlopen(Self.frameworkPath, RTLD_LAZY | RTLD_LOCAL) else {
+                let detail = dlerror().map { String(cString: $0) } ?? Self.frameworkPath
+                throw SessionLockError.unavailable(detail)
+            }
+            defer { dlclose(handle) }
 
-            do {
-                try process.run()
-            } catch {
-                throw SessionLockError.launchFailed(error.localizedDescription)
+            guard let symbol = dlsym(handle, Self.lockSymbol) else {
+                throw SessionLockError.symbolMissing(Self.lockSymbol)
             }
 
-            process.waitUntilExit()
-            guard process.terminationReason == .exit, process.terminationStatus == 0 else {
-                throw SessionLockError.commandFailed(process.terminationStatus)
+            let lockFunction = unsafeBitCast(symbol, to: LockFunction.self)
+            let status = lockFunction()
+            guard status == 0 else {
+                throw SessionLockError.lockRequestFailed(status)
             }
         }.value
     }
 }
 #else
-public struct MacCGSessionLocker: SessionLocking {
+public struct MacLoginFrameworkSessionLocker: SessionLocking {
     public init() {}
+    public static var isAvailable: Bool { false }
 
     public func lock() async throws {
         throw SessionLockError.unavailable("macOS only")
