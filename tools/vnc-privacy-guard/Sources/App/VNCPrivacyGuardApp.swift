@@ -20,7 +20,7 @@ actor RuntimeEngine {
     private var lockOnDisconnect = true
     private var running = false
 
-    init(sessionLocker: any SessionLocking = MacCGSessionLocker()) {
+    init(sessionLocker: any SessionLocking = MacLoginFrameworkSessionLocker()) {
         let store = FileRecoveryStateStore()
         let display = DisplayPrivacyController(
             hardware: IntelIOKitBrightnessController(),
