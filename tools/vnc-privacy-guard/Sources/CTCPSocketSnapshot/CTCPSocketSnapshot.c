@@ -17,6 +17,8 @@
 #include <sys/socketvar.h>
 #include <sys/sysctl.h>
 
+#if defined(XSO_INPCB) && defined(XSO_TCPCB) && defined(INP_IPV4) && defined(INP_IPV6)
+
 struct vpg_xgen_n {
     uint32_t xgn_len;
     uint32_t xgn_kind;
@@ -233,6 +235,21 @@ int vpg_copy_tcp_snapshot(uint16_t local_port_filter, char **utf8_lines, size_t 
     *length = used;
     return 0;
 }
+
+#else
+
+int vpg_copy_tcp_snapshot(uint16_t local_port_filter, char **utf8_lines, size_t *length) {
+    (void)local_port_filter;
+    if (utf8_lines != NULL) {
+        *utf8_lines = NULL;
+    }
+    if (length != NULL) {
+        *length = 0;
+    }
+    return ENOTSUP;
+}
+
+#endif
 
 #else
 
