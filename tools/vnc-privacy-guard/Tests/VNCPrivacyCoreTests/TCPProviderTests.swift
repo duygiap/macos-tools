@@ -1,0 +1,9 @@
+import XCTest
+@testable import VNCPrivacyCore
+
+final class TCPProviderTests: XCTestCase {
+    func testFallbackProviderUsesPrimaryWhenPrimarySucceeds() async throws { let expected = [TCPConnectionRecord(state: .established, localAddress: "127.0.0.1", localPort: 5900, remoteAddress: "100.64.1.2", remotePort: 50000)]; let primary = StubTCPProvider(result: .success(expected)); let fallback = StubTCPProvider(result: .success([])); let provider = FallbackTCPConnectionProvider(primary: primary, fallback: fallback); XCTAssertEqual(try await provider.snapshot(), expected); XCTAssertEqual(await provider.currentMode, .nativeSysctl); XCTAssertEqual(await fallback.callCount, 0) }
+    func testFallbackProviderUsesNetstatAfterPrimaryFailure() async throws { let expected = [TCPConnectionRecord(state: .listen, localAddress: "*", localPort: 5900, remoteAddress: "*", remotePort: 0)]; let provider = FallbackTCPConnectionProvider(primary: StubTCPProvider(result: .failure(TCPConnectionProviderError.unavailable("sysctl unavailable"))), fallback: StubTCPProvider(result: .success(expected))); XCTAssertEqual(try await provider.snapshot(), expected); XCTAssertEqual(await provider.currentMode, .netstatFallback) }
+    func testNativeStateMappingRejectsUnknownValues() { XCTAssertEqual(NativeTCPStateMapper.map(0), .closed); XCTAssertEqual(NativeTCPStateMapper.map(1), .listen); XCTAssertEqual(NativeTCPStateMapper.map(4), .established); XCTAssertEqual(NativeTCPStateMapper.map(999), .unknown) }
+}
+private actor StubTCPProvider: TCPConnectionProviding { private let result: Result<[TCPConnectionRecord], Error>; private(set) var callCount = 0; init(result: Result<[TCPConnectionRecord], Error>) { self.result = result }; func snapshot() async throws -> [TCPConnectionRecord] { callCount += 1; return try result.get() } }

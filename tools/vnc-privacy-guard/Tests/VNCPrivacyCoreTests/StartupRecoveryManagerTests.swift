@@ -1,0 +1,11 @@
+import XCTest
+@testable import VNCPrivacyCore
+
+final class StartupRecoveryManagerTests: XCTestCase {
+    func testCleanStartupDoesNotTouchDisplay() async { let restorer = RecordingRestorer(result: true); let manager = StartupRecoveryManager(store: StartupStore(result: .success(nil)), restorer: restorer); XCTAssertEqual(await manager.recoverIfNeeded(), .clean); XCTAssertEqual(await restorer.calls, 0) }
+    func testActiveRecoveryStateIsRestoredBeforeNormalStartupContinues() async { let state = RecoveryState(displays: [.init(displayID: 1, originalBrightness: 0.42)], reason: "crash"); let restorer = RecordingRestorer(result: true); let manager = StartupRecoveryManager(store: StartupStore(result: .success(state)), restorer: restorer); XCTAssertEqual(await manager.recoverIfNeeded(), .restored); XCTAssertEqual(await restorer.calls, 1) }
+    func testMalformedRecoveryStateReportsFailureWithoutCrashing() async { let restorer = RecordingRestorer(result: true); let manager = StartupRecoveryManager(store: StartupStore(result: .failure(RecoveryStoreError.corrupted("bad json"))), restorer: restorer); let outcome = await manager.recoverIfNeeded(); guard case .failed(let message) = outcome else { return XCTFail("expected failed outcome") }; XCTAssertTrue(message.contains("bad json")); XCTAssertEqual(await restorer.calls, 0) }
+    func testRestoreFailureKeepsRecoveryRequiredStatus() async { let state = RecoveryState(displays: [.init(displayID: 1, originalBrightness: 0.8)], reason: "crash"); let manager = StartupRecoveryManager(store: StartupStore(result: .success(state)), restorer: RecordingRestorer(result: false)); XCTAssertEqual(await manager.recoverIfNeeded(), .failed("Display restore verification failed")) }
+}
+private final class StartupStore: @unchecked Sendable, RecoveryStatePersisting { let result: Result<RecoveryState?, Error>; init(result: Result<RecoveryState?, Error>) { self.result = result }; func load() throws -> RecoveryState? { try result.get() }; func persist(_ state: RecoveryState) throws {}; func clear() throws {} }
+private actor RecordingRestorer: DisplayRestoring { let result: Bool; private(set) var calls = 0; init(result: Bool) { self.result = result }; func restoreDisplay() async -> Bool { calls += 1; return result } }
