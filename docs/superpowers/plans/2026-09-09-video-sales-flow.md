@@ -15,7 +15,7 @@
 - Default engine is `mock`; Google Flow credit consumption requires explicit opt-in.
 - No paid Gemini/Veo API integration and no private Google API reverse engineering.
 - No Google passwords, OAuth tokens, cookies, or browser-profile contents committed to git.
-- Default maximum is 10 requested videos per job.
+- Default maxima are 10 requested videos and 10 outfit references per job.
 - Browser automation must abort rather than interact with purchase, upgrade, or top-up UI.
 - Tests and CI must never consume Google Flow credits.
 
@@ -54,7 +54,7 @@
 - `GenerationEngine.generate_video(request) -> GeneratedAsset`
 - `JobService.run(...) -> JobManifest`
 
-- [ ] Write failing tests for copied inputs, max-video guard, one try-on per garment, N video outputs, and failed-manifest persistence.
+- [ ] Write failing tests for copied inputs, max-video/max-outfit guards, one try-on per garment, N video outputs, and failed-manifest persistence.
 - [ ] Run focused tests and observe RED.
 - [ ] Implement storage, engine protocol, mock engine, and service minimally.
 - [ ] Re-run focused and full tests and confirm GREEN.
@@ -71,7 +71,7 @@
 - `GoogleFlowEngine.generate_image(...) -> GeneratedAsset`
 - `GoogleFlowEngine.generate_video(...) -> GeneratedAsset`
 
-- [ ] Write failing unit tests for selector override parsing, purchase-text blocking, and download naming without launching a browser.
+- [ ] Write failing unit tests for selector override parsing, purchase-text blocking, new-download selection, and download naming without launching a browser.
 - [ ] Run focused tests and observe RED.
 - [ ] Implement centralized selectors, persistent-profile context, upload/prompt/generate/download workflow, bounded polling, purchase guard, and failure screenshot capture.
 - [ ] Re-run tests and confirm GREEN.

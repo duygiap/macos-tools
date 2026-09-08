@@ -1,0 +1,45 @@
+name: Test Video Sales Flow
+
+on:
+  push:
+    branches:
+      - feature/video-sales-flow
+    paths:
+      - 'tools/video-sales-flow/**'
+      - '.github/workflows/video-sales-flow.yml'
+  pull_request:
+    paths:
+      - 'tools/video-sales-flow/**'
+      - '.github/workflows/video-sales-flow.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: tools/video-sales-flow
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: tools/video-sales-flow/pyproject.toml
+
+      - name: Install package and test dependencies
+        run: python -m pip install -e '.[dev]'
+
+      - name: Run tests
+        run: python -m pytest -q
+
+      - name: Compile package
+        run: python -m compileall -q src

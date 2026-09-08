@@ -31,7 +31,7 @@ The Google Flow engine uses Playwright `launch_persistent_context` against a loc
 
 ## Data flow
 
-1. Validate the model image, garment images, requested count, duration, and local credit guard.
+1. Validate the model image, garment images, requested count, outfit count, duration, and local credit guards.
 2. Copy inputs into `outputs/<job-id>/inputs/` so the manifest is self-contained.
 3. For each garment, build a virtual-try-on prompt and ask the engine for one edited still image.
 4. Plan N motion variants. `auto` rotates through pose, catwalk, turn, mixed, and light-jump directions to avoid near-duplicate clips.
@@ -43,7 +43,7 @@ The Google Flow engine uses Playwright `launch_persistent_context` against a loc
 ## Google Flow automation safety
 
 - Default engine is `mock`; real credit use requires `--engine google-flow` or `VIDEO_SALES_ENGINE=google-flow`.
-- The job limit defaults to 10 videos and can only be lowered or explicitly raised with `VIDEO_SALES_MAX_VIDEOS`.
+- The local guards default to 10 videos and 10 outfit references per job and can only be changed explicitly with `VIDEO_SALES_MAX_VIDEOS` / `VIDEO_SALES_MAX_OUTFITS`.
 - The engine never clicks buttons whose accessible text includes purchase/upgrade/top-up terms.
 - No billing API or automatic credit purchase is implemented.
 - Login is interactive and headful: `video-sales-flow login` opens the persistent Chromium profile for the user to authenticate directly with Google.
@@ -87,7 +87,7 @@ Input errors fail before any engine call. Every engine failure records the curre
 
 ## Testing
 
-TDD covers validation, motion distribution, prompt invariants, manifest state transitions, file copying, max-video guard, and Google Flow selector/purchase-guard behavior. CI uses only the mock engine and therefore consumes no Google credits. Real Google Flow execution is documented as a local smoke test because it requires an authenticated user session and live third-party UI.
+TDD covers validation, motion distribution, prompt invariants, manifest state transitions, file copying, video/outfit safety guards, and Google Flow selector/purchase/download-guard behavior. CI uses only the mock engine and therefore consumes no Google credits. Real Google Flow execution is documented as a local smoke test because it requires an authenticated user session and live third-party UI.
 
 ## Compatibility
 
