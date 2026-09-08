@@ -5,15 +5,22 @@ import VNCPrivacyCore
 import AppKit
 import ServiceManagement
 
+private enum AppPreferences {
+    static let lockOnDisconnect = "lockMacOnVNCDisconnect"
+}
+
 actor RuntimeEngine {
     private let store: FileRecoveryStateStore
     private let display: DisplayPrivacyController
     private let coordinator: SecurityCoordinator
     private let monitor: VNCSessionMonitor
     private let watchdog: ProtectionWatchdog
+    private let sessionLocker: any SessionLocking
+    private var disconnectLockPolicy = DisconnectLockPolicy()
+    private var lockOnDisconnect = true
     private var running = false
 
-    init() {
+    init(sessionLocker: any SessionLocking = MacCGSessionLocker()) {
         let store = FileRecoveryStateStore()
         let display = DisplayPrivacyController(
             hardware: IntelIOKitBrightnessController(),
@@ -38,6 +45,23 @@ actor RuntimeEngine {
             disconnectDebounce: 2.0
         )
         self.watchdog = ProtectionWatchdog(maintainer: coordinator, interval: 1.0)
+        self.sessionLocker = sessionLocker
+    }
+
+    func setLockOnDisconnect(_ enabled: Bool) async {
+        lockOnDisconnect = enabled
+        guard enabled else {
+            disconnectLockPolicy.disarm()
+            return
+        }
+
+        guard running else { return }
+        let snapshot = await monitor.currentSnapshot
+        _ = disconnectLockPolicy.observe(
+            snapshot,
+            protectionEnabled: true,
+            lockOnDisconnect: true
+        )
     }
 
     func start(statusHandler: @escaping @Sendable (SecurityStatus) async -> Void) async -> StartupRecoveryOutcome {
@@ -52,10 +76,9 @@ actor RuntimeEngine {
         }
 
         running = true
-        let coordinator = self.coordinator
-        await monitor.start { snapshot in
-            await coordinator.handleSessionSnapshot(snapshot)
-            await statusHandler(await coordinator.status)
+        await monitor.start { [weak self] snapshot in
+            guard let self else { return }
+            await self.handle(snapshot: snapshot, statusHandler: statusHandler)
         }
         await watchdog.start()
         await statusHandler(await coordinator.status)
@@ -63,6 +86,7 @@ actor RuntimeEngine {
     }
 
     func stopAndRestore() async -> Bool {
+        disconnectLockPolicy.disarm()
         await monitor.stop()
         await watchdog.stop()
         running = false
@@ -70,11 +94,37 @@ actor RuntimeEngine {
     }
 
     func restoreDisplay() async -> Bool {
-        await coordinator.emergencyRestore()
+        disconnectLockPolicy.disarm()
+        return await coordinator.emergencyRestore()
     }
 
     func blankNow() async -> ProtectionResult {
         await display.activateProtection(reason: "Manual Blank Now")
+    }
+
+    private func handle(
+        snapshot: VNCSessionSnapshot,
+        statusHandler: @escaping @Sendable (SecurityStatus) async -> Void
+    ) async {
+        await coordinator.handleSessionSnapshot(snapshot)
+
+        let shouldLock = disconnectLockPolicy.observe(
+            snapshot,
+            protectionEnabled: running,
+            lockOnDisconnect: lockOnDisconnect
+        )
+
+        await statusHandler(await coordinator.status)
+
+        guard shouldLock else { return }
+        NSLog("VNC Privacy Guard: VNC session lost; display restore completed or was attempted; locking macOS session")
+
+        do {
+            try await sessionLocker.lock()
+            NSLog("VNC Privacy Guard: macOS session lock requested successfully")
+        } catch {
+            NSLog("VNC Privacy Guard: ERROR macOS session lock failed: %@", String(describing: error))
+        }
     }
 }
 
@@ -84,12 +134,15 @@ final class MenuBarAppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var statusMenuItem: NSMenuItem!
     private var protectionMenuItem: NSMenuItem!
+    private var lockOnDisconnectMenuItem: NSMenuItem!
     private var launchAtLoginMenuItem: NSMenuItem!
     private var protectionEnabled = true
+    private var lockOnDisconnectEnabled = true
     private var terminationInProgress = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        loadPreferences()
         configureStatusItem()
         refreshLaunchAtLoginState()
         startProtectionEngine()
@@ -130,6 +183,14 @@ final class MenuBarAppDelegate: NSObject, NSApplicationDelegate {
         return .terminateLater
     }
 
+    private func loadPreferences() {
+        let defaults = UserDefaults.standard
+        if defaults.object(forKey: AppPreferences.lockOnDisconnect) == nil {
+            defaults.set(true, forKey: AppPreferences.lockOnDisconnect)
+        }
+        lockOnDisconnectEnabled = defaults.bool(forKey: AppPreferences.lockOnDisconnect)
+    }
+
     private func configureStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         statusItem.button?.image = NSImage(systemSymbolName: "shield", accessibilityDescription: "VNC Privacy Guard")
@@ -145,6 +206,15 @@ final class MenuBarAppDelegate: NSObject, NSApplicationDelegate {
         protectionMenuItem.target = self
         protectionMenuItem.state = .on
         menu.addItem(protectionMenuItem)
+
+        lockOnDisconnectMenuItem = NSMenuItem(
+            title: "Lock Mac When VNC Disconnects",
+            action: #selector(toggleLockOnDisconnect(_:)),
+            keyEquivalent: ""
+        )
+        lockOnDisconnectMenuItem.target = self
+        lockOnDisconnectMenuItem.state = lockOnDisconnectEnabled ? .on : .off
+        menu.addItem(lockOnDisconnectMenuItem)
 
         let blankItem = NSMenuItem(title: "Blank Now", action: #selector(blankNow(_:)), keyEquivalent: "")
         blankItem.target = self
@@ -173,13 +243,16 @@ final class MenuBarAppDelegate: NSObject, NSApplicationDelegate {
 
     private func startProtectionEngine() {
         statusMenuItem.title = "Starting protection engine…"
+        let shouldLockOnDisconnect = lockOnDisconnectEnabled
+
         Task { [weak self] in
             guard let self else { return }
+            await self.engine.setLockOnDisconnect(shouldLockOnDisconnect)
             let outcome = await self.engine.start { [weak self] status in
                 guard let self else { return }
                 await self.apply(status: status)
             }
-            await self.apply(recoveryOutcome: outcome)
+            self.apply(recoveryOutcome: outcome)
         }
     }
 
@@ -204,6 +277,18 @@ final class MenuBarAppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    @objc private func toggleLockOnDisconnect(_ sender: NSMenuItem) {
+        lockOnDisconnectEnabled.toggle()
+        sender.state = lockOnDisconnectEnabled ? .on : .off
+        UserDefaults.standard.set(lockOnDisconnectEnabled, forKey: AppPreferences.lockOnDisconnect)
+
+        let enabled = lockOnDisconnectEnabled
+        Task { [weak self] in
+            guard let self else { return }
+            await self.engine.setLockOnDisconnect(enabled)
+        }
+    }
+
     @objc private func blankNow(_ sender: NSMenuItem) {
         Task { [weak self] in
             guard let self else { return }
@@ -223,7 +308,7 @@ final class MenuBarAppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             let restored = await self.engine.restoreDisplay()
             await MainActor.run {
-                self.statusMenuItem.title = restored ? "Display restored" : "RECOVERY REQUIRED — restore failed"
+                self.statusMenuItem.title = restored ? "Display restored — disconnect lock disarmed" : "RECOVERY REQUIRED — restore failed"
                 self.updateIcon(warning: !restored, protected: false)
             }
         }
@@ -255,7 +340,7 @@ final class MenuBarAppDelegate: NSObject, NSApplicationDelegate {
     @objc private func showAbout(_ sender: NSMenuItem) {
         let alert = NSAlert()
         alert.messageText = "VNC Privacy Guard"
-        alert.informativeText = "Native Intel macOS privacy guard. It watches established VNC/Screen Sharing sessions on TCP 5900 and uses IOKit display brightness control so the physical panel can be dark while the remote desktop remains interactive."
+        alert.informativeText = "Native Intel macOS privacy guard. It automatically watches established VNC/Screen Sharing sessions on TCP 5900, protects the physical display with verified IOKit brightness control, and can lock the Mac when the last VNC session disconnects or monitoring is lost beyond the safety grace period."
         alert.addButton(withTitle: "OK")
         alert.runModal()
     }
