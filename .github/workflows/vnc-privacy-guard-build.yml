@@ -31,6 +31,12 @@ jobs:
           test "$(uname -m)" = "x86_64"
           swift --version
 
+      - name: Verify macOS lock helper
+        run: |
+          LOCK_HELPER="/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession"
+          test -x "$LOCK_HELPER"
+          file "$LOCK_HELPER"
+
       - name: Run unit tests
         run: swift test
 
