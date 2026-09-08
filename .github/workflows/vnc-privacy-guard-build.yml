@@ -31,11 +31,15 @@ jobs:
           test "$(uname -m)" = "x86_64"
           swift --version
 
-      - name: Verify macOS lock helper
+      - name: Verify macOS lock framework symbol
         run: |
-          LOCK_HELPER="/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession"
-          test -x "$LOCK_HELPER"
-          file "$LOCK_HELPER"
+          python3 - <<'PY'
+          import ctypes
+          path = "/System/Library/PrivateFrameworks/login.framework/Versions/A/login"
+          library = ctypes.CDLL(path)
+          getattr(library, "SACLockScreenImmediate")
+          print(f"Verified SACLockScreenImmediate in {path}")
+          PY
 
       - name: Run unit tests
         run: swift test
