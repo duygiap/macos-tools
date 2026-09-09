@@ -128,11 +128,18 @@ class Settings:
     timeout_seconds: int = 300
     browser_executable: Path | None = None
     tryon_engine: str = "legacy"
-    # The engine name remains ``gemini-web`` for backwards-compatible configuration,
-    # but the supported browser surface is Google AI Studio's image playground.
+    # Browser-based AI Studio settings are retained for backwards compatibility.
     gemini_url: str = "https://aistudio.google.com/prompts/new_chat"
     ai_studio_image_model: str = "Nano Banana 2 Lite"
     ai_studio_image_resolution: str = "1K"
+    # Recommended official Google GenAI / AI Studio API settings.
+    ai_studio_api_model: str = "models/gemini-3.1-flash-lite-image"
+    ai_studio_api_aspect_ratio: str = "9:16"
+    ai_studio_api_image_size: str = "1K"
+    ai_studio_api_thinking_level: str = "high"
+    ai_studio_api_temperature: float = 1.0
+    ai_studio_api_top_p: float = 1.0
+    ai_studio_api_max_output_tokens: int = 65536
     tryon_max_attempts: int = 3
     tryon_min_width: int = 512
     tryon_min_height: int = 512
@@ -151,6 +158,7 @@ class Settings:
             profile_dir = (Path.cwd().parent.parent / ".browser-profile").resolve()
         else:
             profile_dir = Path("./.browser-profile").expanduser().resolve()
+
         max_videos = int(source.get("VIDEO_SALES_MAX_VIDEOS", "10"))
         if max_videos < 1:
             raise ValueError("VIDEO_SALES_MAX_VIDEOS must be at least 1")
@@ -160,15 +168,19 @@ class Settings:
         timeout_seconds = int(source.get("VIDEO_SALES_FLOW_TIMEOUT_SECONDS", "300"))
         if timeout_seconds < 30:
             raise ValueError("VIDEO_SALES_FLOW_TIMEOUT_SECONDS must be at least 30")
+
         engine = source.get("VIDEO_SALES_ENGINE", "mock").strip().lower()
         if engine not in {"mock", "google-flow"}:
             raise ValueError("VIDEO_SALES_ENGINE must be 'mock' or 'google-flow'")
 
         tryon_engine = source.get("VIDEO_SALES_TRYON_ENGINE", "legacy").strip().lower()
-        if tryon_engine not in {"legacy", "mock", "gemini-web"}:
+        valid_tryon_engines = {"legacy", "mock", "gemini-web", "ai-studio-api"}
+        if tryon_engine not in valid_tryon_engines:
             raise ValueError(
-                "VIDEO_SALES_TRYON_ENGINE must be 'legacy', 'mock', or 'gemini-web'"
+                "VIDEO_SALES_TRYON_ENGINE must be 'legacy', 'mock', 'gemini-web', "
+                "or 'ai-studio-api'"
             )
+
         tryon_max_attempts = int(source.get("VIDEO_SALES_TRYON_MAX_ATTEMPTS", "3"))
         if tryon_max_attempts < 1 or tryon_max_attempts > 5:
             raise ValueError("VIDEO_SALES_TRYON_MAX_ATTEMPTS must be between 1 and 5")
@@ -178,9 +190,15 @@ class Settings:
             raise ValueError("VIDEO_SALES_TRYON_MIN_WIDTH must be at least 1")
         if tryon_min_height < 1:
             raise ValueError("VIDEO_SALES_TRYON_MIN_HEIGHT must be at least 1")
+
         tryon_review_mode = source.get("VIDEO_SALES_TRYON_REVIEW_MODE", "local").strip().lower()
-        if tryon_review_mode not in {"local", "gemini-web"}:
-            raise ValueError("VIDEO_SALES_TRYON_REVIEW_MODE must be 'local' or 'gemini-web'")
+        valid_review_modes = {"local", "gemini-web", "ai-studio-api"}
+        if tryon_review_mode not in valid_review_modes:
+            raise ValueError(
+                "VIDEO_SALES_TRYON_REVIEW_MODE must be 'local', 'gemini-web', "
+                "or 'ai-studio-api'"
+            )
+
         ai_studio_image_model = source.get(
             "VIDEO_SALES_AI_STUDIO_IMAGE_MODEL", "Nano Banana 2 Lite"
         ).strip()
@@ -192,6 +210,42 @@ class Settings:
         if not ai_studio_image_resolution:
             raise ValueError("VIDEO_SALES_AI_STUDIO_IMAGE_RESOLUTION must not be blank")
 
+        ai_studio_api_model = source.get(
+            "VIDEO_SALES_AI_STUDIO_API_MODEL", "models/gemini-3.1-flash-lite-image"
+        ).strip()
+        if not ai_studio_api_model:
+            raise ValueError("VIDEO_SALES_AI_STUDIO_API_MODEL must not be blank")
+        ai_studio_api_aspect_ratio = source.get(
+            "VIDEO_SALES_AI_STUDIO_API_ASPECT_RATIO", "9:16"
+        ).strip()
+        if not ai_studio_api_aspect_ratio:
+            raise ValueError("VIDEO_SALES_AI_STUDIO_API_ASPECT_RATIO must not be blank")
+        ai_studio_api_image_size = source.get(
+            "VIDEO_SALES_AI_STUDIO_API_IMAGE_SIZE", "1K"
+        ).strip()
+        if not ai_studio_api_image_size:
+            raise ValueError("VIDEO_SALES_AI_STUDIO_API_IMAGE_SIZE must not be blank")
+        ai_studio_api_thinking_level = source.get(
+            "VIDEO_SALES_AI_STUDIO_API_THINKING_LEVEL", "high"
+        ).strip().lower()
+        if ai_studio_api_thinking_level not in {"minimal", "low", "medium", "high"}:
+            raise ValueError(
+                "VIDEO_SALES_AI_STUDIO_API_THINKING_LEVEL must be minimal, low, medium, or high"
+            )
+        ai_studio_api_temperature = float(
+            source.get("VIDEO_SALES_AI_STUDIO_API_TEMPERATURE", "1")
+        )
+        if ai_studio_api_temperature < 0:
+            raise ValueError("VIDEO_SALES_AI_STUDIO_API_TEMPERATURE must be non-negative")
+        ai_studio_api_top_p = float(source.get("VIDEO_SALES_AI_STUDIO_API_TOP_P", "1"))
+        if not 0 < ai_studio_api_top_p <= 1:
+            raise ValueError("VIDEO_SALES_AI_STUDIO_API_TOP_P must be greater than 0 and at most 1")
+        ai_studio_api_max_output_tokens = int(
+            source.get("VIDEO_SALES_AI_STUDIO_API_MAX_OUTPUT_TOKENS", "65536")
+        )
+        if ai_studio_api_max_output_tokens < 1:
+            raise ValueError("VIDEO_SALES_AI_STUDIO_API_MAX_OUTPUT_TOKENS must be at least 1")
+
         browser_exec_env = source.get("VIDEO_SALES_BROWSER_EXECUTABLE") or source.get(
             "VIDEO_SALES_CHROME_PATH"
         )
@@ -200,6 +254,7 @@ class Settings:
             if browser_exec_env
             else detect_browser_executable(env=source)
         )
+
         return cls(
             output_root=output_root,
             profile_dir=profile_dir,
@@ -216,6 +271,13 @@ class Settings:
             ).strip(),
             ai_studio_image_model=ai_studio_image_model,
             ai_studio_image_resolution=ai_studio_image_resolution,
+            ai_studio_api_model=ai_studio_api_model,
+            ai_studio_api_aspect_ratio=ai_studio_api_aspect_ratio,
+            ai_studio_api_image_size=ai_studio_api_image_size,
+            ai_studio_api_thinking_level=ai_studio_api_thinking_level,
+            ai_studio_api_temperature=ai_studio_api_temperature,
+            ai_studio_api_top_p=ai_studio_api_top_p,
+            ai_studio_api_max_output_tokens=ai_studio_api_max_output_tokens,
             tryon_max_attempts=tryon_max_attempts,
             tryon_min_width=tryon_min_width,
             tryon_min_height=tryon_min_height,
