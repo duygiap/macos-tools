@@ -17,6 +17,9 @@ def test_tryon_prompt_preserves_identity_and_exact_garment_details() -> None:
     assert "body proportions" in lowered
     assert "garment reference" in lowered
     assert "do not invent logos" in lowered
+    assert "native 1k fashion master" in lowered
+    assert "resolution selected in google ai studio" in lowered
+    assert "no thumbnail" in lowered
     assert prompt.reference_paths == ["model.jpg", "shirt.png"]
 
 

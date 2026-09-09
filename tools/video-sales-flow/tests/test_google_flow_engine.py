@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from video_sales_flow.config import Settings
+from video_sales_flow.config import Settings, load_environment_file
 from video_sales_flow.engines.google_flow import (
     FlowSelectors,
     contains_purchase_text,
@@ -21,6 +21,25 @@ def test_settings_default_to_mock_and_google_flow_url(tmp_path: Path) -> None:
     assert settings.max_videos == 10
     assert settings.max_outfits == 10
     assert settings.profile_dir == (tmp_path / "profile").resolve()
+
+
+def test_load_environment_file_preserves_exported_values_and_parses_quoted_values(tmp_path: Path) -> None:
+    dotenv = tmp_path / ".env"
+    dotenv.write_text(
+        "# local runtime configuration\n"
+        "TELEGRAM_BOT_TOKEN=from-file\n"
+        "VIDEO_SALES_ENGINE='google-flow'\n",
+        encoding="utf-8",
+    )
+    environment = {"TELEGRAM_BOT_TOKEN": "from-shell"}
+
+    loaded = load_environment_file(dotenv, environment)
+
+    assert loaded == dotenv.resolve()
+    assert environment == {
+        "TELEGRAM_BOT_TOKEN": "from-shell",
+        "VIDEO_SALES_ENGINE": "google-flow",
+    }
 
 
 def test_flow_selectors_can_be_overridden_from_environment() -> None:
@@ -160,5 +179,3 @@ def test_login_uses_native_browser(tmp_path: Path, monkeypatch) -> None:
     assert cmd_args[0] == str(custom_bin)
     assert f"--user-data-dir={tmp_path / 'profile'}" in cmd_args
     assert "https://flow.google/" in cmd_args
-
-

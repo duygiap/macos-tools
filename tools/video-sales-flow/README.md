@@ -11,7 +11,7 @@ The production workflow can now run as:
 
 ```text
 Telegram photos
-  -> Gemini web try-on
+  -> Google AI Studio try-on
   -> image quality / watermark review
   -> reject + regenerate when needed
   -> approved still only
@@ -19,7 +19,7 @@ Telegram photos
   -> Telegram finished video
 ```
 
-The Google integrations deliberately use **Gemini web and Google Flow in Chromium via Playwright** with the capabilities already available to the signed-in Google account. They do **not** fall back to paid Gemini/Veo APIs, reverse engineer private APIs, buy credits, or upgrade a plan automatically.
+The Google integrations deliberately use **Google AI Studio and Google Flow in Chromium via Playwright** with the capabilities already available to the signed-in Google account. They do **not** fall back to paid Gemini/Veo APIs, reverse engineer private APIs, buy credits, or upgrade a plan automatically.
 
 ## Safety defaults
 
@@ -30,20 +30,20 @@ The Google integrations deliberately use **Gemini web and Google Flow in Chromiu
 - Try-on review defaults to 512x512 minimum dimensions and at most 3 generation attempts.
 - A try-on image rejected by review is **regenerated**. The tool does not remove or conceal watermarks.
 - Google Flow video generation does not begin until every required try-on still has been approved.
-- Purchase/upgrade dialogs in Gemini or Flow are detected and the operation aborts rather than clicking them.
+- Purchase/upgrade dialogs in Google AI Studio or Flow are detected and the operation aborts rather than clicking them.
 - Google credentials remain only in the local persistent browser profile; the tool does not export cookies or passwords.
 - Telegram bot tokens are read only from `TELEGRAM_BOT_TOKEN`; they are never persisted into manifests or source files.
 - Telegram `google-flow` mode refuses to start unless `TELEGRAM_ALLOWED_CHAT_IDS` is set, preventing an unknown chat from consuming Flow credits.
 - Generation is sequential inside each Telegram worker to avoid accidental concurrent browser/profile use and credit bursts.
 
-> Gemini and Google Flow are live third-party web UIs. Their DOM can change. Important selectors are environment-overridable so UI changes can be fixed without changing the job orchestration layer.
+> Google AI Studio and Google Flow are live third-party web UIs. Their DOM can change. Important selectors are environment-overridable so UI changes can be fixed without changing the job orchestration layer.
 
 ## Requirements
 
 - Python 3.11+
-- macOS for the intended authenticated Gemini/Flow workflow (mock tests also work on Linux)
+- macOS for the intended authenticated Google AI Studio/Flow workflow (mock tests also work on Linux)
 - Chromium/Chrome usable by Playwright
-- A Google account that can use Gemini web and Google Flow
+- A Google account that can use Google AI Studio and Google Flow
 - Optional: a Telegram Bot API token from BotFather for Telegram image-in/video-out mode
 
 ## Install
@@ -90,7 +90,7 @@ The mock try-on engine creates deterministic PNG images, local review approves t
 
 ## 2. Prepare the shared Google browser profile
 
-The Gemini and Flow adapters can share one persistent Chromium profile.
+The Google AI Studio and Flow adapters can share one persistent Chromium profile.
 
 Choose a stable profile directory:
 
@@ -104,7 +104,7 @@ Sign in / prepare Google Flow:
 video-sales-flow login
 ```
 
-Sign in / prepare Gemini web:
+Sign in / prepare Google AI Studio:
 
 ```bash
 video-sales-flow gemini-login
@@ -112,11 +112,11 @@ video-sales-flow gemini-login
 
 Both commands open the relevant Google site with the configured persistent profile. Sign in directly with Google in that browser. No password or cookie export is written into this repository.
 
-A custom Gemini URL or browser executable can be supplied when needed:
+A custom AI Studio URL or browser executable can be supplied when needed:
 
 ```bash
 video-sales-flow gemini-login \
-  --gemini-url 'https://gemini.google.com/app' \
+  --gemini-url 'https://aistudio.google.com/prompts/new_chat' \
   --browser-executable '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 ```
 
@@ -154,13 +154,14 @@ video-sales-flow generate \
 For each outfit the service now performs this order:
 
 1. Build the existing identity-preserving apparel try-on prompt.
-2. Upload the model image plus that outfit reference to Gemini web.
-3. Ask Gemini to generate the model wearing the referenced garment.
-4. Run mandatory local validation: real image decode, non-empty file, and minimum dimensions.
-5. When `VIDEO_SALES_TRYON_REVIEW_MODE=gemini-web`, upload that generated still to Gemini again for semantic review.
-6. Reject visible watermark/stock-source text, unrelated overlaid text, serious face/hand/body distortion, broken garment geometry, or an implausible try-on result.
-7. If rejected, append the review issues and retry hint to the next generation prompt and regenerate, up to `VIDEO_SALES_TRYON_MAX_ATTEMPTS`.
-8. Only the approved still becomes Reference Image A for Google Flow video generation.
+2. In Google AI Studio, select **Upload files** and upload the model image plus that outfit reference.
+3. Select the configured image model (default: **Nano Banana 2 Lite**) and **1K** resolution, then run the prompt in AI Studio to generate the model wearing the referenced garment.
+4. Download the original generated file; AI Studio thumbnail screenshots are never used as try-on assets.
+5. Run mandatory local validation: real image decode, non-empty file, and minimum dimensions.
+6. When `VIDEO_SALES_TRYON_REVIEW_MODE=gemini-web`, upload that generated still to AI Studio again for semantic review.
+7. Reject visible watermark/stock-source text, unrelated overlaid text, serious face/hand/body distortion, broken garment geometry, or an implausible try-on result.
+8. If rejected, append the review issues and retry hint to the next generation prompt and regenerate, up to `VIDEO_SALES_TRYON_MAX_ATTEMPTS`.
+9. Only the approved still becomes Reference Image A for Google Flow video generation.
 
 Rejected attempts are retained as `debug` assets in the job manifest for diagnosis. Approved attempts are stored as `edited_image` assets with metadata such as `stage=tryon`, attempt number, review result, dimensions, and image engine. No account credential or token is stored in this metadata.
 
@@ -172,16 +173,17 @@ The tool does **not** remove, crop out, hide, or inpaint a watermark. If local/s
 
 Telegram mode uses long polling, so the Mac does **not** need a public HTTP port, webhook, Cloudflare Tunnel, or public domain.
 
-Set the bot token only in the process environment:
+Create `.env` in the workspace root (it is ignored by Git). The CLI loads it automatically,
+so you do not need to export these values in every terminal:
 
 ```bash
-export TELEGRAM_BOT_TOKEN='123456:replace-with-your-bot-token'
-export TELEGRAM_ALLOWED_CHAT_IDS='123456789'
-export VIDEO_SALES_ENGINE='google-flow'
-export VIDEO_SALES_TRYON_ENGINE='gemini-web'
-export VIDEO_SALES_TRYON_REVIEW_MODE='gemini-web'
-export VIDEO_SALES_TRYON_MAX_ATTEMPTS='3'
-export VIDEO_SALES_PROFILE_DIR="$HOME/.local/share/video-sales-flow/chrome"
+TELEGRAM_BOT_TOKEN='123456:replace-with-your-bot-token'
+TELEGRAM_ALLOWED_CHAT_IDS='123456789'
+VIDEO_SALES_ENGINE='google-flow'
+VIDEO_SALES_TRYON_ENGINE='gemini-web'
+VIDEO_SALES_TRYON_REVIEW_MODE='gemini-web'
+VIDEO_SALES_TRYON_MAX_ATTEMPTS='3'
+VIDEO_SALES_PROFILE_DIR="$HOME/.local/share/video-sales-flow/chrome"
 ```
 
 If you do not yet know your chat ID, send one message to the bot and inspect it once:
@@ -218,7 +220,7 @@ The chat flow is:
 2. Send one or more garment/outfit images. Each later image becomes an outfit reference.
 3. Send `/make 3 premium` (or `/make` for 3 energetic videos).
 4. The bot creates a persisted job and clears only the pending input session.
-5. Gemini creates and reviews the try-on still(s), retrying rejected results before Flow starts.
+5. Google AI Studio creates and reviews the try-on still(s), retrying rejected results before Flow starts.
 6. Google Flow generates video only from approved try-on stills.
 7. Each completed video is uploaded back to the **same `chat_id`** and replies to the original `/make` message.
 
@@ -319,7 +321,9 @@ Do not expose this local API directly to the Internet without authentication and
 | `VIDEO_SALES_ENGINE` | `mock` | Video engine: `mock` or `google-flow` |
 | `VIDEO_SALES_TRYON_ENGINE` | `legacy` | Try-on stage: `legacy`, `mock`, or `gemini-web` |
 | `VIDEO_SALES_TRYON_REVIEW_MODE` | `local` | Review mode: `local` or `gemini-web` |
-| `VIDEO_SALES_GEMINI_URL` | `https://gemini.google.com/app` | Gemini web URL |
+| `VIDEO_SALES_GEMINI_URL` | `https://aistudio.google.com/prompts/new_chat` | Google AI Studio URL (the compatibility variable name remains unchanged) |
+| `VIDEO_SALES_AI_STUDIO_IMAGE_MODEL` | `Nano Banana 2 Lite` | Image model selected before every try-on |
+| `VIDEO_SALES_AI_STUDIO_IMAGE_RESOLUTION` | `1K` | Image resolution selected before every try-on |
 | `VIDEO_SALES_TRYON_MAX_ATTEMPTS` | `3` | Generate/review attempts per outfit; valid 1-5 |
 | `VIDEO_SALES_TRYON_MIN_WIDTH` | `512` | Minimum approved still width |
 | `VIDEO_SALES_TRYON_MIN_HEIGHT` | `512` | Minimum approved still height |
@@ -334,16 +338,21 @@ Do not expose this local API directly to the Internet without authentication and
 | `TELEGRAM_BOT_TOKEN` | none | Telegram bot token; required by `telegram` |
 | `TELEGRAM_ALLOWED_CHAT_IDS` | none | Required for `google-flow`; comma-separated allowlist |
 
-### Gemini selector overrides
+### Google AI Studio selector overrides
 
 | Variable | Purpose |
 |---|---|
 | `VIDEO_SALES_GEMINI_PROMPT_SELECTOR` | Prompt textbox |
 | `VIDEO_SALES_GEMINI_UPLOAD_SELECTOR` | File input |
+| `VIDEO_SALES_GEMINI_UPLOAD_MENU_SELECTOR` | AI Studio button that opens the insert-media menu |
+| `VIDEO_SALES_GEMINI_UPLOAD_MENU_ITEM_SELECTOR` | `Upload files` item in the insert-media menu |
+| `VIDEO_SALES_GEMINI_UPLOAD_MENU_INPUT_SELECTOR` | File input scoped to that upload-files item |
 | `VIDEO_SALES_GEMINI_UPLOAD_TRIGGER_SELECTOR` | Add/upload button fallback |
 | `VIDEO_SALES_GEMINI_SEND_SELECTOR` | Submit/send button |
+| `VIDEO_SALES_AI_STUDIO_MODEL_SELECTOR` | AI Studio image-model picker |
+| `VIDEO_SALES_AI_STUDIO_RESOLUTION_SELECTOR` | AI Studio image-resolution picker |
 | `VIDEO_SALES_GEMINI_DOWNLOAD_SELECTOR` | Generated-image download control |
-| `VIDEO_SALES_GEMINI_GENERATED_IMAGE_SELECTOR` | Generated image element used as fallback capture |
+| `VIDEO_SALES_GEMINI_GENERATED_IMAGE_SELECTOR` | Generated image element used to reveal the download control |
 | `VIDEO_SALES_GEMINI_RESPONSE_SELECTOR` | Semantic review response container |
 | `VIDEO_SALES_GEMINI_DIALOG_SELECTOR` | Dialog inspected for purchase/upgrade prompts |
 
@@ -358,7 +367,7 @@ Do not expose this local API directly to the Internet without authentication and
 | `VIDEO_SALES_FLOW_DOWNLOAD_SELECTOR` | Generated asset download control |
 | `VIDEO_SALES_FLOW_DIALOG_SELECTOR` | Dialog inspected by the credit/purchase guard |
 
-## When Gemini or Google Flow changes its UI
+## When Google AI Studio or Google Flow changes its UI
 
 Browser failures attempt to save debug screenshots in the relevant job stage. Inspect the screenshot with Chromium DevTools and override only the selector that changed, for example:
 
@@ -374,7 +383,7 @@ The planner, manifest, retry/review orchestration, API, and Telegram session/del
 
 ## Tests
 
-Tests never log in to Gemini or Google Flow, never contact Telegram, and never consume Google generation credits:
+Tests never log in to Google AI Studio or Google Flow, never contact Telegram, and never consume Google generation credits:
 
 ```bash
 python -m pytest -q
@@ -393,4 +402,4 @@ The suite uses fake/mock transports and engines to verify:
 
 ## Current limitation
 
-Gemini and Google Flow adapters intentionally use their public web UIs rather than undocumented/private APIs. Google may change either UI at any time, so a live authenticated smoke test on your Mac is still required after selector changes. CI verifies the orchestration and safety behavior with mock engines only. The tool fails with diagnostics rather than falling back to a paid API or automatically purchasing/upgrading a plan.
+Google AI Studio and Google Flow adapters intentionally use their public web UIs rather than undocumented/private APIs. Google may change either UI at any time, so a live authenticated smoke test on your Mac is still required after selector changes. CI verifies the orchestration and safety behavior with mock engines only. The tool fails with diagnostics rather than falling back to a paid API or automatically purchasing/upgrading a plan.

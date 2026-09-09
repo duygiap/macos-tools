@@ -22,7 +22,9 @@ def test_settings_expose_safe_tryon_defaults(tmp_path: Path):
     )
 
     assert settings.tryon_engine == "legacy"
-    assert settings.gemini_url == "https://gemini.google.com/app"
+    assert settings.gemini_url == "https://aistudio.google.com/prompts/new_chat"
+    assert settings.ai_studio_image_model == "Nano Banana 2 Lite"
+    assert settings.ai_studio_image_resolution == "1K"
     assert settings.tryon_max_attempts == 3
     assert settings.tryon_min_width == 512
     assert settings.tryon_min_height == 512

@@ -1,4 +1,7 @@
 .venv/
+.env
+.env.*
+!.env.example
 .browser-profile/
 outputs/
 __pycache__/

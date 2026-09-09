@@ -2,9 +2,45 @@ from __future__ import annotations
 
 import os
 import platform
+import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping
+from typing import Mapping, MutableMapping
+
+
+_ENV_KEY = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def load_environment_file(
+    path: Path | None = None,
+    environ: MutableMapping[str, str] | None = None,
+) -> Path | None:
+    """Load simple KEY=VALUE entries from .env without replacing exported values."""
+    target = os.environ if environ is None else environ
+    env_path = (path or (Path.cwd() / ".env")).expanduser().resolve()
+    if not env_path.is_file():
+        return None
+
+    for line_number, raw_line in enumerate(env_path.read_text(encoding="utf-8").splitlines(), 1):
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line.removeprefix("export ").lstrip()
+        if "=" not in line:
+            raise ValueError(f"invalid .env entry at {env_path}:{line_number}")
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if not _ENV_KEY.fullmatch(key):
+            raise ValueError(f"invalid .env key at {env_path}:{line_number}")
+        value = value.strip()
+        if value[:1] in {"'", '"'}:
+            quote = value[0]
+            if len(value) < 2 or value[-1] != quote:
+                raise ValueError(f"unterminated quoted value at {env_path}:{line_number}")
+            value = value[1:-1]
+        target.setdefault(key, value)
+    return env_path
 
 
 def _parse_bool(value: str, default: bool) -> bool:
@@ -92,7 +128,11 @@ class Settings:
     timeout_seconds: int = 300
     browser_executable: Path | None = None
     tryon_engine: str = "legacy"
-    gemini_url: str = "https://gemini.google.com/app"
+    # The engine name remains ``gemini-web`` for backwards-compatible configuration,
+    # but the supported browser surface is Google AI Studio's image playground.
+    gemini_url: str = "https://aistudio.google.com/prompts/new_chat"
+    ai_studio_image_model: str = "Nano Banana 2 Lite"
+    ai_studio_image_resolution: str = "1K"
     tryon_max_attempts: int = 3
     tryon_min_width: int = 512
     tryon_min_height: int = 512
@@ -141,6 +181,16 @@ class Settings:
         tryon_review_mode = source.get("VIDEO_SALES_TRYON_REVIEW_MODE", "local").strip().lower()
         if tryon_review_mode not in {"local", "gemini-web"}:
             raise ValueError("VIDEO_SALES_TRYON_REVIEW_MODE must be 'local' or 'gemini-web'")
+        ai_studio_image_model = source.get(
+            "VIDEO_SALES_AI_STUDIO_IMAGE_MODEL", "Nano Banana 2 Lite"
+        ).strip()
+        if not ai_studio_image_model:
+            raise ValueError("VIDEO_SALES_AI_STUDIO_IMAGE_MODEL must not be blank")
+        ai_studio_image_resolution = source.get(
+            "VIDEO_SALES_AI_STUDIO_IMAGE_RESOLUTION", "1K"
+        ).strip()
+        if not ai_studio_image_resolution:
+            raise ValueError("VIDEO_SALES_AI_STUDIO_IMAGE_RESOLUTION must not be blank")
 
         browser_exec_env = source.get("VIDEO_SALES_BROWSER_EXECUTABLE") or source.get(
             "VIDEO_SALES_CHROME_PATH"
@@ -161,7 +211,11 @@ class Settings:
             timeout_seconds=timeout_seconds,
             browser_executable=browser_executable,
             tryon_engine=tryon_engine,
-            gemini_url=source.get("VIDEO_SALES_GEMINI_URL", "https://gemini.google.com/app").strip(),
+            gemini_url=source.get(
+                "VIDEO_SALES_GEMINI_URL", "https://aistudio.google.com/prompts/new_chat"
+            ).strip(),
+            ai_studio_image_model=ai_studio_image_model,
+            ai_studio_image_resolution=ai_studio_image_resolution,
             tryon_max_attempts=tryon_max_attempts,
             tryon_min_width=tryon_min_width,
             tryon_min_height=tryon_min_height,

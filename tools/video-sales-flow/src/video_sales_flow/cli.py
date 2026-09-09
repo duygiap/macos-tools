@@ -5,7 +5,7 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
-from .config import Settings
+from .config import Settings, load_environment_file
 from .engines import build_engine
 from .engines.google_flow import GoogleFlowEngine
 from .models import JobOptions, JobStatus, Motion, Tone
@@ -22,9 +22,9 @@ def _add_tryon_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--tryon-review-mode",
         choices=["local", "gemini-web"],
-        help="Review approved try-on candidates locally or with an additional Gemini web review.",
+        help="Review approved try-on candidates locally or with an additional Google AI Studio review.",
     )
-    parser.add_argument("--gemini-url", help="Gemini web URL override.")
+    parser.add_argument("--gemini-url", help="Google AI Studio URL override.")
     parser.add_argument("--tryon-max-attempts", type=int, help="Maximum try-on regeneration attempts (1-5).")
     parser.add_argument("--tryon-min-width", type=int, help="Minimum approved try-on image width.")
     parser.add_argument("--tryon-min-height", type=int, help="Minimum approved try-on image height.")
@@ -52,7 +52,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     gemini_login = subparsers.add_parser(
         "gemini-login",
-        help="Open Gemini in the shared persistent Chromium profile for interactive sign-in/setup.",
+        help="Open Google AI Studio in the shared persistent Chromium profile for sign-in/setup.",
     )
     gemini_login.add_argument("--profile-dir")
     gemini_login.add_argument("--gemini-url")
@@ -163,8 +163,9 @@ def _apply_common_overrides(settings: Settings, args: argparse.Namespace) -> Set
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
-    args = parser.parse_args(argv)
     try:
+        load_environment_file()
+        args = parser.parse_args(argv)
         settings = _apply_common_overrides(Settings.from_env(), args)
         if args.command == "login":
             GoogleFlowEngine(

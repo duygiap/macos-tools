@@ -68,6 +68,9 @@ garment reference.
 Make the clothing fit naturally on the model with realistic folds, drape, contact shadows,
 and anatomy. Keep hands and limbs anatomically plausible. Produce a polished commercial
 fashion still suitable as the visual reference for a short apparel sales video.
+Render a crisp, native 1K fashion master at the resolution selected in Google AI Studio,
+with sharp focus, clean edges, detailed fabric texture, realistic skin and hair detail,
+and no thumbnail, low-resolution preview, blur, pixelation, or compression artifacts.
 Background direction: {options.background_style}.
 """.strip()
         return PlannedPrompt(
