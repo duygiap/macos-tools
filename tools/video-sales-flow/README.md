@@ -19,6 +19,7 @@ The real Google integration deliberately uses **Google Flow in Chromium via Play
 - Purchase/upgrade dialogs are detected and generation aborts rather than clicking them.
 - Google credentials are kept only in the local Playwright browser profile; `.browser-profile/` is gitignored.
 - Telegram bot tokens are read only from `TELEGRAM_BOT_TOKEN`; they are never persisted into manifests or source files.
+- Telegram `google-flow` mode refuses to start unless `TELEGRAM_ALLOWED_CHAT_IDS` is set, preventing an unknown chat from consuming Flow credits.
 - Generation is sequential inside each job to avoid an accidental burst of credit usage.
 
 > Google Flow is a live third-party web UI. Its DOM can change. All important selectors can be overridden with environment variables without changing the planner/job code.
@@ -113,11 +114,32 @@ export VIDEO_SALES_ENGINE='google-flow'
 export VIDEO_SALES_PROFILE_DIR="$HOME/.local/share/video-sales-flow/chrome"
 ```
 
-For a personal bot, restrict it to your Telegram chat ID (comma-separated values are supported):
+Before starting the long-polling bot, send one message to the bot and read your chat ID once:
+
+```bash
+python - <<'PY'
+import os
+import httpx
+
+result = httpx.get(
+    f"https://api.telegram.org/bot{os.environ['TELEGRAM_BOT_TOKEN']}/getUpdates",
+    timeout=20,
+).json()["result"]
+for update in result:
+    message = update.get("message") or {}
+    chat = message.get("chat") or {}
+    if "id" in chat:
+        print(chat["id"])
+PY
+```
+
+Real `google-flow` mode requires an allowlist so another Telegram user cannot consume your Flow credits:
 
 ```bash
 export TELEGRAM_ALLOWED_CHAT_IDS='123456789'
 ```
+
+Comma-separated chat IDs are supported for multiple authorized chats.
 
 Start the bot:
 
@@ -156,7 +178,7 @@ outputs/_telegram/
 
 The session JSON stores local media paths and the last job ID, **not** the bot token. `/reset` clears pending images but retains the last job ID so `/resend` still works.
 
-Telegram Bot API currently allows bots to download incoming files through `getFile` up to 20 MB and send video uploads through `sendVideo` up to 50 MB. Keep source photos and generated clips within those limits when using the hosted Bot API.
+Telegram Bot API currently allows bots to download incoming files through `getFile` up to 20 MB and send video uploads through `sendVideo` up to 50 MB. Keep source photos and generated clips within those limits when using the hosted Bot API. The client rejects local video files larger than 50 MB before attempting an upload.
 
 ## Output layout
 
@@ -231,7 +253,7 @@ Do not expose this local API directly to the Internet without authentication and
 | `VIDEO_SALES_FLOW_TIMEOUT_SECONDS` | `300` | Max wait for a generated downloadable asset |
 | `VIDEO_SALES_HEADLESS` | `false` | Run generation browser headless after login |
 | `TELEGRAM_BOT_TOKEN` | none | Telegram bot token; required by `telegram` command |
-| `TELEGRAM_ALLOWED_CHAT_IDS` | empty/all | Optional comma-separated allowlist of Telegram chat IDs |
+| `TELEGRAM_ALLOWED_CHAT_IDS` | none | Required for `google-flow`; optional comma-separated allowlist in mock mode |
 | `VIDEO_SALES_FLOW_PROMPT_SELECTOR` | built-in | Override prompt textbox selector |
 | `VIDEO_SALES_FLOW_UPLOAD_SELECTOR` | built-in | Override file-input selector |
 | `VIDEO_SALES_FLOW_UPLOAD_TRIGGER_SELECTOR` | built-in | Override upload-button selector |
@@ -259,7 +281,7 @@ python -m pytest -q
 python -m compileall -q src
 ```
 
-Telegram tests use fake transport/service implementations and verify that the first image becomes the model, later images become outfits, `/make` creates a job, and generated video assets are returned to the originating chat.
+Telegram tests use fake transport/service implementations and verify that the first image becomes the model, later images become outfits, `/make` creates a job, generated video assets are returned to the originating chat, and real Flow Telegram mode cannot start without an explicit chat allowlist.
 
 ## Current limitation
 
