@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -93,3 +94,25 @@ def test_api_uses_configured_reviewed_tryon_pipeline(tmp_path: Path) -> None:
     assert len(approved) == 1
     assert approved[0]["metadata"]["approved"] is True
     assert approved[0]["metadata"]["image_engine"] == "mock"
+
+
+def test_api_loads_dotenv_before_building_settings(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("VIDEO_SALES_MAX_VIDEOS", raising=False)
+    monkeypatch.delenv("VIDEO_SALES_ENGINE", raising=False)
+    monkeypatch.delenv("VIDEO_SALES_TRYON_ENGINE", raising=False)
+    monkeypatch.delenv("VIDEO_SALES_TRYON_REVIEW_MODE", raising=False)
+    (tmp_path / ".env").write_text(
+        "GEMINI_API_KEY='test-secret'\n"
+        "VIDEO_SALES_MAX_VIDEOS='7'\n"
+        "VIDEO_SALES_ENGINE='mock'\n"
+        "VIDEO_SALES_TRYON_ENGINE='legacy'\n"
+        "VIDEO_SALES_TRYON_REVIEW_MODE='local'\n",
+        encoding="utf-8",
+    )
+
+    client = TestClient(create_app(engine=MockEngine()))
+
+    assert os.environ["GEMINI_API_KEY"] == "test-secret"
+    assert client.get("/health").json()["max_videos"] == 7
