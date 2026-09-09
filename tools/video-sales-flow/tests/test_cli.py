@@ -124,3 +124,34 @@ def test_generate_and_telegram_accept_tryon_overrides():
     assert generate.gemini_url == "https://gemini.example/app"
     assert telegram.tryon_engine == "gemini-web"
     assert telegram.tryon_review_mode == "local"
+
+
+def test_generate_and_telegram_accept_ai_studio_api_tryon_modes():
+    parser = build_parser()
+    generate = parser.parse_args(
+        [
+            "generate",
+            "--model",
+            "m.jpg",
+            "--outfit",
+            "o.jpg",
+            "--tryon-engine",
+            "ai-studio-api",
+            "--tryon-review-mode",
+            "ai-studio-api",
+        ]
+    )
+    telegram = parser.parse_args(
+        [
+            "telegram",
+            "--tryon-engine",
+            "ai-studio-api",
+            "--tryon-review-mode",
+            "local",
+        ]
+    )
+
+    assert generate.tryon_engine == "ai-studio-api"
+    assert generate.tryon_review_mode == "ai-studio-api"
+    assert telegram.tryon_engine == "ai-studio-api"
+    assert telegram.tryon_review_mode == "local"
