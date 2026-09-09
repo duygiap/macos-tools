@@ -444,6 +444,10 @@ class TelegramBot:
             self.client.send_message(chat_id, f"❌ {exc}", message_id)
 
     def run_forever(self) -> None:
+        print(
+            f"[Telegram Bot] Started. Listening for updates (poll timeout: {self.poll_timeout}s)...",
+            flush=True,
+        )
         offset: int | None = None
         while True:
             try:
@@ -484,6 +488,7 @@ def build_telegram_bot(
         )
 
     from .engines import build_engine
+    from .tryon import build_tryon_pipeline
 
     engine = build_engine(settings.engine, settings)
     service = JobService(
@@ -491,6 +496,7 @@ def build_telegram_bot(
         engine=engine,
         max_videos=settings.max_videos,
         max_outfits=settings.max_outfits,
+        tryon_pipeline=build_tryon_pipeline(settings),
     )
     session_store = TelegramSessionStore(settings.output_root / "_telegram" / "sessions")
     return TelegramBot(

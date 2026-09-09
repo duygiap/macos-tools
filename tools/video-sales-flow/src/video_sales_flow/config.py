@@ -19,7 +19,18 @@ def load_environment_file(
     target = os.environ if environ is None else environ
     env_path = (path or (Path.cwd() / ".env")).expanduser().resolve()
     if not env_path.is_file():
-        return None
+        candidates = [
+            Path.cwd() / "tools" / "video-sales-flow" / ".env",
+            Path(__file__).resolve().parent.parent.parent / ".env",
+            Path.cwd().parent / ".env",
+        ]
+        for candidate in candidates:
+            if candidate.is_file():
+                env_path = candidate.resolve()
+                break
+        else:
+            return None
+
 
     for line_number, raw_line in enumerate(env_path.read_text(encoding="utf-8").splitlines(), 1):
         line = raw_line.strip()

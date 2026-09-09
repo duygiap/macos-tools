@@ -168,6 +168,12 @@ def _apply_common_overrides(settings: Settings, args: argparse.Namespace) -> Set
 
 
 def main(argv: list[str] | None = None) -> int:
+    if sys.platform == "win32":
+        try:
+            sys.stdout.reconfigure(encoding="utf-8")
+            sys.stderr.reconfigure(encoding="utf-8")
+        except Exception:
+            pass
     parser = build_parser()
     try:
         load_environment_file()

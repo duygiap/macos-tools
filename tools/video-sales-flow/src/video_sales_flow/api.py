@@ -7,7 +7,7 @@ from pathlib import Path
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
 from pydantic import ValidationError
 
-from .config import Settings
+from .config import Settings, load_environment_file
 from .engines import build_engine
 from .engines.base import GenerationEngine
 from .models import JobOptions, Motion, Tone
@@ -31,6 +31,7 @@ def create_app(
     settings: Settings | None = None,
     engine: GenerationEngine | None = None,
 ) -> FastAPI:
+    load_environment_file()
     settings = settings or Settings.from_env()
     engine = engine or build_engine(settings.engine, settings)
     service = JobService(
