@@ -14,6 +14,7 @@ from video_sales_flow.telegram_bot import (
     build_telegram_bot,
     parse_make_command,
 )
+from video_sales_flow.tryon.mock import MockTryOnEngine
 
 
 class InlineExecutor:
@@ -170,3 +171,21 @@ def test_google_flow_telegram_bot_requires_chat_allowlist(tmp_path: Path):
 
     with pytest.raises(ValueError, match="TELEGRAM_ALLOWED_CHAT_IDS"):
         build_telegram_bot(settings, env={"TELEGRAM_BOT_TOKEN": "123:test-token"})
+
+
+def test_telegram_builder_injects_configured_tryon_pipeline(tmp_path: Path):
+    settings = Settings(
+        output_root=tmp_path / "outputs",
+        profile_dir=tmp_path / "profile",
+        engine="mock",
+        tryon_engine="mock",
+        tryon_min_width=1,
+        tryon_min_height=1,
+    )
+
+    bot = build_telegram_bot(settings, env={"TELEGRAM_BOT_TOKEN": "123:test-token"})
+    try:
+        assert bot.service.tryon_pipeline is not None
+        assert isinstance(bot.service.tryon_pipeline.engine, MockTryOnEngine)
+    finally:
+        bot.close()
