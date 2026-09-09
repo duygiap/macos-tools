@@ -38,3 +38,13 @@ def test_generate_parser_defaults_motion_to_auto_at_execution_layer() -> None:
     assert args.motions is None
     assert args.count == 3
     assert args.engine is None
+
+
+def test_telegram_parser_accepts_google_flow_and_poll_timeout() -> None:
+    args = build_parser().parse_args(
+        ["telegram", "--engine", "google-flow", "--poll-timeout", "20"]
+    )
+
+    assert args.command == "telegram"
+    assert args.engine == "google-flow"
+    assert args.poll_timeout == 20
