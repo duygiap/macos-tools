@@ -2,6 +2,7 @@ from pathlib import Path
 
 from video_sales_flow.config import Settings
 from video_sales_flow.tryon import build_tryon_pipeline
+from video_sales_flow.tryon.ai_studio_api import AIStudioAPITryOnEngine, AIStudioAPITryOnReviewer
 from video_sales_flow.tryon.gemini_web import GeminiWebTryOnEngine, GeminiWebTryOnReviewer
 from video_sales_flow.tryon.mock import MockTryOnEngine
 from video_sales_flow.tryon.review import TryOnReviewer
@@ -55,4 +56,32 @@ def test_gemini_web_semantic_review_uses_same_public_web_client(tmp_path: Path):
     assert pipeline is not None
     assert isinstance(pipeline.engine, GeminiWebTryOnEngine)
     assert isinstance(pipeline.reviewer, GeminiWebTryOnReviewer)
+    assert pipeline.engine.client is pipeline.reviewer.client
+
+
+def test_ai_studio_api_tryon_with_local_review_uses_official_sdk(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    pipeline = build_tryon_pipeline(
+        _settings(tmp_path, tryon_engine="ai-studio-api", tryon_review_mode="local")
+    )
+
+    assert pipeline is not None
+    assert isinstance(pipeline.engine, AIStudioAPITryOnEngine)
+    assert isinstance(pipeline.reviewer, TryOnReviewer)
+    assert pipeline.engine.client.settings.ai_studio_api_model == "models/gemini-3.1-flash-lite-image"
+
+
+def test_ai_studio_api_semantic_review_reuses_same_api_client(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    pipeline = build_tryon_pipeline(
+        _settings(
+            tmp_path,
+            tryon_engine="ai-studio-api",
+            tryon_review_mode="ai-studio-api",
+        )
+    )
+
+    assert pipeline is not None
+    assert isinstance(pipeline.engine, AIStudioAPITryOnEngine)
+    assert isinstance(pipeline.reviewer, AIStudioAPITryOnReviewer)
     assert pipeline.engine.client is pipeline.reviewer.client
