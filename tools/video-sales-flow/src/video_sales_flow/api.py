@@ -12,6 +12,7 @@ from .engines import build_engine
 from .engines.base import GenerationEngine
 from .models import JobOptions, Motion, Tone
 from .service import JobService
+from .tryon import build_tryon_pipeline
 
 
 def _parse_motions(value: str) -> list[Motion]:
@@ -37,6 +38,7 @@ def create_app(
         engine=engine,
         max_videos=settings.max_videos,
         max_outfits=settings.max_outfits,
+        tryon_pipeline=build_tryon_pipeline(settings),
     )
 
     app = FastAPI(title="Video Sales Flow", version="0.1.0")
