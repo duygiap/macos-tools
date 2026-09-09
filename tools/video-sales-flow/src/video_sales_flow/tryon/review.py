@@ -64,7 +64,7 @@ class TryOnReviewer:
                         f"image dimensions {width}x{height} are below minimum "
                         f"{self.min_width}x{self.min_height}"
                     )
-        except (UnidentifiedImageError, OSError, ValueError) as exc:
+        except (UnidentifiedImageError, OSError, ValueError, SyntaxError) as exc:
             return TryOnReviewResult(
                 approved=False,
                 issues=[f"generated asset is not a valid supported image: {type(exc).__name__}"],
