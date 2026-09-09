@@ -1,0 +1,9 @@
+.venv/
+.browser-profile/
+outputs/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.png
+*.mp4
+*.jpg

@@ -260,6 +260,7 @@ Do not expose this local API directly to the Internet without authentication and
 | `VIDEO_SALES_FLOW_GENERATE_SELECTOR` | built-in | Override generation button selector |
 | `VIDEO_SALES_FLOW_DOWNLOAD_SELECTOR` | built-in | Override generated-asset download selector |
 | `VIDEO_SALES_FLOW_DIALOG_SELECTOR` | built-in | Override dialog selector used by credit guard |
+| `VIDEO_SALES_BROWSER_EXECUTABLE` | auto-detected | Override Chrome/Chromium browser executable path (auto-detects Chrome/Edge on Windows, Chrome on macOS/Linux) |
 
 ## When Google Flow changes its UI
 

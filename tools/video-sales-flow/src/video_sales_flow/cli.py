@@ -25,6 +25,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     login.add_argument("--profile-dir")
     login.add_argument("--flow-url")
+    login.add_argument("--browser-executable", help="Custom browser executable path.")
+    login.add_argument(
+        "--use-playwright",
+        action="store_true",
+        help="Use automated Playwright context instead of genuine native browser window.",
+    )
 
     generate = subparsers.add_parser("generate", help="Create a video-sales job.")
     generate.add_argument("--model", required=True, help="Model image path.")
@@ -60,6 +66,7 @@ def build_parser() -> argparse.ArgumentParser:
     generate.add_argument("--max-outfits", type=int)
     generate.add_argument("--flow-url")
     generate.add_argument("--timeout-seconds", type=int)
+    generate.add_argument("--browser-executable", help="Custom browser executable path.")
 
     telegram = subparsers.add_parser(
         "telegram",
@@ -72,6 +79,7 @@ def build_parser() -> argparse.ArgumentParser:
     telegram.add_argument("--max-outfits", type=int)
     telegram.add_argument("--flow-url")
     telegram.add_argument("--timeout-seconds", type=int)
+    telegram.add_argument("--browser-executable", help="Custom browser executable path.")
     telegram.add_argument(
         "--poll-timeout",
         type=int,
@@ -102,6 +110,8 @@ def _apply_common_overrides(settings: Settings, args: argparse.Namespace) -> Set
         updates["timeout_seconds"] = args.timeout_seconds
     if getattr(args, "engine", None):
         updates["engine"] = args.engine
+    if getattr(args, "browser_executable", None):
+        updates["browser_executable"] = Path(args.browser_executable).expanduser().resolve()
     return replace(settings, **updates) if updates else settings
 
 
@@ -111,7 +121,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         settings = _apply_common_overrides(Settings.from_env(), args)
         if args.command == "login":
-            GoogleFlowEngine(settings=replace(settings, engine="google-flow", headless=False)).login()
+            GoogleFlowEngine(
+                settings=replace(settings, engine="google-flow", headless=False)
+            ).login(use_native=not getattr(args, "use_playwright", False))
             return 0
 
         if args.command == "status":
