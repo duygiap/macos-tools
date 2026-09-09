@@ -75,3 +75,52 @@ def test_cli_accepts_browser_executable_override() -> None:
     overridden = _apply_common_overrides(base_settings, gen_args)
     assert overridden.browser_executable == Path("/custom/chrome").resolve()
 
+
+def test_gemini_login_parser_uses_shared_profile_and_custom_url():
+    args = build_parser().parse_args(
+        [
+            "gemini-login",
+            "--profile-dir",
+            "/tmp/profile",
+            "--gemini-url",
+            "https://gemini.google.com/app",
+        ]
+    )
+
+    assert args.command == "gemini-login"
+    assert args.profile_dir == "/tmp/profile"
+    assert args.gemini_url == "https://gemini.google.com/app"
+
+
+def test_generate_and_telegram_accept_tryon_overrides():
+    parser = build_parser()
+    generate = parser.parse_args(
+        [
+            "generate",
+            "--model",
+            "m.jpg",
+            "--outfit",
+            "o.jpg",
+            "--tryon-engine",
+            "gemini-web",
+            "--tryon-review-mode",
+            "gemini-web",
+            "--gemini-url",
+            "https://gemini.example/app",
+        ]
+    )
+    telegram = parser.parse_args(
+        [
+            "telegram",
+            "--tryon-engine",
+            "gemini-web",
+            "--tryon-review-mode",
+            "local",
+        ]
+    )
+
+    assert generate.tryon_engine == "gemini-web"
+    assert generate.tryon_review_mode == "gemini-web"
+    assert generate.gemini_url == "https://gemini.example/app"
+    assert telegram.tryon_engine == "gemini-web"
+    assert telegram.tryon_review_mode == "local"
