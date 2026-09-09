@@ -1,0 +1,65 @@
+name: Build VNC Privacy Guard Intel App
+
+on:
+  push:
+    branches:
+      - feature/vnc-privacy-guard-app-bundle
+  pull_request:
+    paths:
+      - 'tools/vnc-privacy-guard/**'
+      - '.github/workflows/vnc-privacy-guard-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-intel-app:
+    runs-on: macos-15-intel
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: tools/vnc-privacy-guard
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify Intel runner
+        run: |
+          uname -a
+          test "$(uname -m)" = "x86_64"
+          swift --version
+
+      - name: Verify macOS lock framework symbol
+        run: |
+          python3 - <<'PY'
+          import ctypes
+          path = "/System/Library/PrivateFrameworks/login.framework/Versions/A/login"
+          library = ctypes.CDLL(path)
+          getattr(library, "SACLockScreenImmediate")
+          print(f"Verified SACLockScreenImmediate in {path}")
+          PY
+
+      - name: Run unit tests
+        run: swift test
+
+      - name: Build installable app
+        run: |
+          chmod +x scripts/build-app.sh
+          ARCH=x86_64 CONFIG=release ./scripts/build-app.sh
+
+      - name: Verify app architecture and signature
+        run: |
+          file "dist/VNC Privacy Guard.app/Contents/MacOS/VNCPrivacyGuard"
+          lipo -info "dist/VNC Privacy Guard.app/Contents/MacOS/VNCPrivacyGuard" | grep x86_64
+          codesign --verify --deep --strict --verbose=2 "dist/VNC Privacy Guard.app"
+          plutil -lint "dist/VNC Privacy Guard.app/Contents/Info.plist"
+
+      - name: Upload install packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: VNC-Privacy-Guard-macOS-Intel-x86_64
+          path: tools/vnc-privacy-guard/dist/packages/*
+          if-no-files-found: error
+          retention-days: 14

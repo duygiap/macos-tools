@@ -40,6 +40,7 @@ public struct VNCSessionTracker: Sendable {
     private let disconnectDebounce: TimeInterval
     private var activeByKey: [Key: VNCConnection] = [:]
     private var disconnectStartedAt: Date?
+    private var providerFailureStartedAt: Date?
 
     public init(localPort: UInt16 = 5900, disconnectDebounce: TimeInterval = 2.0) {
         self.localPort = localPort
@@ -47,6 +48,8 @@ public struct VNCSessionTracker: Sendable {
     }
 
     public mutating func update(records: [TCPConnectionRecord], now: Date = Date()) -> VNCSessionSnapshot {
+        providerFailureStartedAt = nil
+
         let established = VNCConnectionFilter.activeConnections(records, localPort: localPort)
         if !established.isEmpty {
             var next: [Key: VNCConnection] = [:]
@@ -88,8 +91,24 @@ public struct VNCSessionTracker: Sendable {
     }
 
     public mutating func providerFailed(now: Date = Date()) -> VNCSessionSnapshot {
-        _ = now
-        return snapshot(state: .uncertain, debouncing: disconnectStartedAt != nil)
+        guard !activeByKey.isEmpty else {
+            providerFailureStartedAt = providerFailureStartedAt ?? now
+            return VNCSessionSnapshot(state: .uncertain, activeConnections: [], isDisconnectDebouncing: false)
+        }
+
+        if providerFailureStartedAt == nil {
+            providerFailureStartedAt = disconnectStartedAt ?? now
+        }
+
+        let elapsed = now.timeIntervalSince(providerFailureStartedAt ?? now)
+        if elapsed < disconnectDebounce {
+            return snapshot(state: .uncertain, debouncing: true)
+        }
+
+        activeByKey.removeAll()
+        disconnectStartedAt = nil
+        providerFailureStartedAt = nil
+        return VNCSessionSnapshot(state: .disconnected, activeConnections: [], isDisconnectDebouncing: false)
     }
 
     private func snapshot(state: VNCMonitorState, debouncing: Bool) -> VNCSessionSnapshot {
