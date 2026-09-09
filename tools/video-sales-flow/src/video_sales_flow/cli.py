@@ -61,6 +61,24 @@ def build_parser() -> argparse.ArgumentParser:
     generate.add_argument("--flow-url")
     generate.add_argument("--timeout-seconds", type=int)
 
+    telegram = subparsers.add_parser(
+        "telegram",
+        help="Run the Telegram long-polling bot for image-in/video-out jobs.",
+    )
+    telegram.add_argument("--engine", choices=["mock", "google-flow"])
+    telegram.add_argument("--output-root")
+    telegram.add_argument("--profile-dir")
+    telegram.add_argument("--max-videos", type=int)
+    telegram.add_argument("--max-outfits", type=int)
+    telegram.add_argument("--flow-url")
+    telegram.add_argument("--timeout-seconds", type=int)
+    telegram.add_argument(
+        "--poll-timeout",
+        type=int,
+        default=25,
+        help="Telegram getUpdates long-poll timeout in seconds (1-50).",
+    )
+
     status = subparsers.add_parser("status", help="Print a persisted job manifest.")
     status.add_argument("job_id")
     status.add_argument("--output-root")
@@ -104,6 +122,18 @@ def main(argv: list[str] | None = None) -> int:
                 max_outfits=settings.max_outfits,
             )
             print(service.load_manifest(args.job_id).model_dump_json(indent=2))
+            return 0
+
+        if args.command == "telegram":
+            if not 1 <= args.poll_timeout <= 50:
+                raise ValueError("--poll-timeout must be between 1 and 50 seconds")
+            from .telegram_bot import build_telegram_bot
+
+            bot = build_telegram_bot(settings, poll_timeout=args.poll_timeout)
+            try:
+                bot.run_forever()
+            finally:
+                bot.close()
             return 0
 
         motions = [Motion(value) for value in args.motions] if args.motions else [Motion.AUTO]
