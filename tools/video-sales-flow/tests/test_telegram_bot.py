@@ -4,10 +4,14 @@ from concurrent.futures import Future
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
+from video_sales_flow.config import Settings
 from video_sales_flow.models import GeneratedAsset, JobOptions, JobStatus, Tone
 from video_sales_flow.telegram_bot import (
     TelegramBot,
     TelegramSessionStore,
+    build_telegram_bot,
     parse_make_command,
 )
 
@@ -155,3 +159,14 @@ def test_reset_clears_pending_images_but_keeps_last_job_for_resend(tmp_path: Pat
     assert session.model_image is None
     assert session.outfit_images == []
     assert session.last_job_id == "job-123"
+
+
+def test_google_flow_telegram_bot_requires_chat_allowlist(tmp_path: Path):
+    settings = Settings(
+        output_root=tmp_path / "outputs",
+        profile_dir=tmp_path / "profile",
+        engine="google-flow",
+    )
+
+    with pytest.raises(ValueError, match="TELEGRAM_ALLOWED_CHAT_IDS"):
+        build_telegram_bot(settings, env={"TELEGRAM_BOT_TOKEN": "123:test-token"})
