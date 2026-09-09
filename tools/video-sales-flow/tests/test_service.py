@@ -7,6 +7,9 @@ from video_sales_flow.engines.base import GeneratedAsset, GenerationEngine
 from video_sales_flow.engines.mock import MockEngine
 from video_sales_flow.models import JobOptions, JobStatus, PlannedPrompt
 from video_sales_flow.service import JobService
+from video_sales_flow.tryon.base import TryOnReviewResult
+from video_sales_flow.tryon.mock import MockTryOnEngine
+from video_sales_flow.tryon.pipeline import TryOnPipeline
 
 
 def _file(path: Path, content: bytes = b"x") -> Path:
@@ -82,6 +85,7 @@ class CountingEngine(GenerationEngine):
     def __init__(self) -> None:
         self.image_calls = 0
         self.video_calls = 0
+        self.video_prompts: list[PlannedPrompt] = []
 
     def generate_image(self, prompt: PlannedPrompt, output_dir: Path, stem: str) -> GeneratedAsset:
         self.image_calls += 1
@@ -92,6 +96,7 @@ class CountingEngine(GenerationEngine):
 
     def generate_video(self, prompt: PlannedPrompt, output_dir: Path, stem: str) -> GeneratedAsset:
         self.video_calls += 1
+        self.video_prompts.append(prompt)
         path = output_dir / f"{stem}.mp4"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"video")
@@ -104,6 +109,20 @@ class FailingVideoEngine(CountingEngine):
     def generate_video(self, prompt: PlannedPrompt, output_dir: Path, stem: str) -> GeneratedAsset:
         self.video_calls += 1
         raise RuntimeError("synthetic video failure")
+
+
+class AlwaysApproveReviewer:
+    def review(self, image_path: Path) -> TryOnReviewResult:
+        return TryOnReviewResult(approved=True, metadata={"width": 768, "height": 1024})
+
+
+class AlwaysRejectReviewer:
+    def review(self, image_path: Path) -> TryOnReviewResult:
+        return TryOnReviewResult(
+            approved=False,
+            issues=["visible watermark"],
+            retry_hint="Regenerate without watermark or overlaid text.",
+        )
 
 
 def test_create_job_rejects_too_many_outfits_before_engine_use(tmp_path: Path) -> None:
@@ -127,3 +146,77 @@ def test_create_job_rejects_too_many_outfits_before_engine_use(tmp_path: Path) -
 
     assert engine.image_calls == 0
     assert engine.video_calls == 0
+
+
+def test_reviewed_tryon_is_used_as_video_reference_instead_of_legacy_image_generation(
+    tmp_path: Path,
+) -> None:
+    model = _file(tmp_path / "model.jpg", b"model")
+    outfit = _file(tmp_path / "shirt.jpg", b"shirt")
+    engine = CountingEngine()
+    tryon_pipeline = TryOnPipeline(
+        engine=MockTryOnEngine(width=768, height=1024),
+        reviewer=AlwaysApproveReviewer(),
+        max_attempts=2,
+    )
+    service = JobService(
+        output_root=tmp_path / "outputs",
+        engine=engine,
+        tryon_pipeline=tryon_pipeline,
+    )
+
+    manifest = service.run(
+        model_image=model,
+        outfit_images=[outfit],
+        options=JobOptions(video_count=1),
+    )
+
+    assert manifest.status is JobStatus.COMPLETED
+    assert engine.image_calls == 0
+    assert engine.video_calls == 1
+    assert len(engine.video_prompts) == 1
+    video_reference = Path(engine.video_prompts[0].reference_paths[0])
+    assert video_reference.name == "tryon-01-attempt-01.png"
+    approved_assets = [
+        asset
+        for asset in manifest.assets
+        if asset.asset_type == "edited_image" and asset.metadata.get("stage") == "tryon"
+    ]
+    assert len(approved_assets) == 1
+    assert Path(approved_assets[0].path) == video_reference
+    assert approved_assets[0].metadata["approved"] is True
+
+
+def test_rejected_tryon_exhaustion_fails_job_before_any_video_generation(tmp_path: Path) -> None:
+    model = _file(tmp_path / "model.jpg", b"model")
+    outfit = _file(tmp_path / "shirt.jpg", b"shirt")
+    engine = CountingEngine()
+    tryon_pipeline = TryOnPipeline(
+        engine=MockTryOnEngine(width=768, height=1024),
+        reviewer=AlwaysRejectReviewer(),
+        max_attempts=2,
+    )
+    service = JobService(
+        output_root=tmp_path / "outputs",
+        engine=engine,
+        tryon_pipeline=tryon_pipeline,
+    )
+
+    manifest = service.run(
+        model_image=model,
+        outfit_images=[outfit],
+        options=JobOptions(video_count=1),
+    )
+
+    assert manifest.status is JobStatus.FAILED
+    assert "try-on review rejected" in (manifest.error or "")
+    assert engine.image_calls == 0
+    assert engine.video_calls == 0
+    assert not [asset for asset in manifest.assets if asset.asset_type == "video"]
+    rejected_assets = [
+        asset
+        for asset in manifest.assets
+        if asset.asset_type == "debug" and asset.metadata.get("stage") == "tryon"
+    ]
+    assert len(rejected_assets) == 2
+    assert all(asset.metadata["approved"] is False for asset in rejected_assets)
