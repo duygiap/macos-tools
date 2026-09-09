@@ -34,7 +34,7 @@ class JobService:
         self.max_videos = max_videos
         self.max_outfits = max_outfits
         self.planner = planner or PromptPlanner()
-        self.tryon_pipeline = tryon_pipeline
+        self.tryon_pipeline = tryon_pipeline or getattr(engine, "tryon_pipeline", None)
 
     def create_job(
         self,
