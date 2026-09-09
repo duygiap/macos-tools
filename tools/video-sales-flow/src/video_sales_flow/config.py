@@ -91,6 +91,12 @@ class Settings:
     headless: bool = True
     timeout_seconds: int = 300
     browser_executable: Path | None = None
+    tryon_engine: str = "legacy"
+    gemini_url: str = "https://gemini.google.com/app"
+    tryon_max_attempts: int = 3
+    tryon_min_width: int = 512
+    tryon_min_height: int = 512
+    tryon_review_mode: str = "local"
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> "Settings":
@@ -117,6 +123,25 @@ class Settings:
         engine = source.get("VIDEO_SALES_ENGINE", "mock").strip().lower()
         if engine not in {"mock", "google-flow"}:
             raise ValueError("VIDEO_SALES_ENGINE must be 'mock' or 'google-flow'")
+
+        tryon_engine = source.get("VIDEO_SALES_TRYON_ENGINE", "legacy").strip().lower()
+        if tryon_engine not in {"legacy", "mock", "gemini-web"}:
+            raise ValueError(
+                "VIDEO_SALES_TRYON_ENGINE must be 'legacy', 'mock', or 'gemini-web'"
+            )
+        tryon_max_attempts = int(source.get("VIDEO_SALES_TRYON_MAX_ATTEMPTS", "3"))
+        if tryon_max_attempts < 1 or tryon_max_attempts > 5:
+            raise ValueError("VIDEO_SALES_TRYON_MAX_ATTEMPTS must be between 1 and 5")
+        tryon_min_width = int(source.get("VIDEO_SALES_TRYON_MIN_WIDTH", "512"))
+        tryon_min_height = int(source.get("VIDEO_SALES_TRYON_MIN_HEIGHT", "512"))
+        if tryon_min_width < 1:
+            raise ValueError("VIDEO_SALES_TRYON_MIN_WIDTH must be at least 1")
+        if tryon_min_height < 1:
+            raise ValueError("VIDEO_SALES_TRYON_MIN_HEIGHT must be at least 1")
+        tryon_review_mode = source.get("VIDEO_SALES_TRYON_REVIEW_MODE", "local").strip().lower()
+        if tryon_review_mode not in {"local", "gemini-web"}:
+            raise ValueError("VIDEO_SALES_TRYON_REVIEW_MODE must be 'local' or 'gemini-web'")
+
         browser_exec_env = source.get("VIDEO_SALES_BROWSER_EXECUTABLE") or source.get(
             "VIDEO_SALES_CHROME_PATH"
         )
@@ -135,6 +160,10 @@ class Settings:
             headless=_parse_bool(source.get("VIDEO_SALES_HEADLESS", "true"), True),
             timeout_seconds=timeout_seconds,
             browser_executable=browser_executable,
+            tryon_engine=tryon_engine,
+            gemini_url=source.get("VIDEO_SALES_GEMINI_URL", "https://gemini.google.com/app").strip(),
+            tryon_max_attempts=tryon_max_attempts,
+            tryon_min_width=tryon_min_width,
+            tryon_min_height=tryon_min_height,
+            tryon_review_mode=tryon_review_mode,
         )
-
-
