@@ -146,11 +146,12 @@ def parse_allowed_chat_ids(value: str | None) -> set[int] | None:
 
 
 class TelegramHTTPClient:
+    MAX_HOSTED_VIDEO_BYTES = 50 * 1024 * 1024
+
     def __init__(self, token: str, timeout_seconds: float = 70.0):
         token = token.strip()
         if not token:
             raise ValueError("Telegram bot token must not be empty")
-        self._token = token
         self._api_base = f"https://api.telegram.org/bot{token}"
         self._file_base = f"https://api.telegram.org/file/bot{token}"
         self._http = httpx.Client(timeout=httpx.Timeout(timeout_seconds, connect=15.0))
@@ -158,9 +159,19 @@ class TelegramHTTPClient:
     def close(self) -> None:
         self._http.close()
 
+    @staticmethod
+    def _transport_error(operation: str, exc: httpx.HTTPError) -> TelegramAPIError:
+        response = getattr(exc, "response", None)
+        status_code = getattr(response, "status_code", None)
+        suffix = f" (HTTP {status_code})" if status_code is not None else ""
+        return TelegramAPIError(f"Telegram {operation} request failed{suffix}")
+
     def _request(self, method: str, *, json_payload: dict[str, Any] | None = None) -> Any:
-        response = self._http.post(f"{self._api_base}/{method}", json=json_payload or {})
-        response.raise_for_status()
+        try:
+            response = self._http.post(f"{self._api_base}/{method}", json=json_payload or {})
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise self._transport_error(method, exc) from exc
         payload = response.json()
         if not payload.get("ok"):
             raise TelegramAPIError(payload.get("description", f"Telegram {method} failed"))
@@ -197,16 +208,21 @@ class TelegramHTTPClient:
         video_path = video_path.expanduser().resolve()
         if not video_path.is_file():
             raise FileNotFoundError(f"video not found: {video_path}")
+        if video_path.stat().st_size > self.MAX_HOSTED_VIDEO_BYTES:
+            raise ValueError("video exceeds Telegram hosted Bot API 50 MB sendVideo limit")
         data: dict[str, str] = {"chat_id": str(chat_id), "caption": caption}
         if reply_to_message_id is not None:
             data["reply_parameters"] = json.dumps({"message_id": reply_to_message_id})
-        with video_path.open("rb") as stream:
-            response = self._http.post(
-                f"{self._api_base}/sendVideo",
-                data=data,
-                files={"video": (video_path.name, stream, "video/mp4")},
-            )
-        response.raise_for_status()
+        try:
+            with video_path.open("rb") as stream:
+                response = self._http.post(
+                    f"{self._api_base}/sendVideo",
+                    data=data,
+                    files={"video": (video_path.name, stream, "video/mp4")},
+                )
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise self._transport_error("sendVideo", exc) from exc
         payload = response.json()
         if not payload.get("ok"):
             raise TelegramAPIError(payload.get("description", "Telegram sendVideo failed"))
@@ -218,8 +234,11 @@ class TelegramHTTPClient:
         if not file_path:
             raise TelegramAPIError("Telegram getFile returned no file_path")
 
-        response = self._http.get(f"{self._file_base}/{file_path}")
-        response.raise_for_status()
+        try:
+            response = self._http.get(f"{self._file_base}/{file_path}")
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise self._transport_error("file download", exc) from exc
         destination_dir.mkdir(parents=True, exist_ok=True)
         original_name = Path(file_path).name or f"telegram-{file_id}.jpg"
         destination = destination_dir / f"{time.time_ns()}-{original_name}"
@@ -459,6 +478,10 @@ def build_telegram_bot(
     if not token:
         raise ValueError("TELEGRAM_BOT_TOKEN is required")
     allowed = parse_allowed_chat_ids(source.get("TELEGRAM_ALLOWED_CHAT_IDS"))
+    if settings.engine == "google-flow" and allowed is None:
+        raise ValueError(
+            "TELEGRAM_ALLOWED_CHAT_IDS is required when VIDEO_SALES_ENGINE=google-flow"
+        )
 
     from .engines import build_engine
 
