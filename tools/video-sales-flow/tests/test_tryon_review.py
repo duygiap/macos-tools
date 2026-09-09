@@ -1,17 +1,16 @@
 from __future__ import annotations
 
-import base64
 from pathlib import Path
 
 import pytest
+from PIL import Image
 
 from video_sales_flow.config import Settings
 from video_sales_flow.tryon.review import TryOnReviewer
 
 
-_PNG_1X1 = base64.b64decode(
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z4x8AAAAASUVORK5CYII="
-)
+def _write_png(path: Path, size: tuple[int, int] = (1, 1)) -> None:
+    Image.new("RGB", size, "white").save(path, format="PNG")
 
 
 def test_settings_expose_safe_tryon_defaults(tmp_path: Path):
@@ -48,9 +47,19 @@ def test_reviewer_rejects_missing_file(tmp_path: Path):
     assert any("does not exist" in issue for issue in result.issues)
 
 
+def test_reviewer_rejects_corrupt_image(tmp_path: Path):
+    image = tmp_path / "corrupt.png"
+    image.write_bytes(b"not-a-real-image")
+
+    result = TryOnReviewer(min_width=1, min_height=1).review(image)
+
+    assert result.approved is False
+    assert any("valid supported image" in issue for issue in result.issues)
+
+
 def test_reviewer_rejects_too_small_image(tmp_path: Path):
     image = tmp_path / "tiny.png"
-    image.write_bytes(_PNG_1X1)
+    _write_png(image)
 
     result = TryOnReviewer(min_width=512, min_height=512).review(image)
 
@@ -60,7 +69,7 @@ def test_reviewer_rejects_too_small_image(tmp_path: Path):
 
 def test_reviewer_rejects_watermark_hint_in_filename(tmp_path: Path):
     image = tmp_path / "freepik-watermark.png"
-    image.write_bytes(_PNG_1X1)
+    _write_png(image)
 
     result = TryOnReviewer(min_width=1, min_height=1).review(image)
 
@@ -70,7 +79,7 @@ def test_reviewer_rejects_watermark_hint_in_filename(tmp_path: Path):
 
 def test_reviewer_approves_decodable_image_when_local_checks_pass(tmp_path: Path):
     image = tmp_path / "approved.png"
-    image.write_bytes(_PNG_1X1)
+    _write_png(image)
 
     result = TryOnReviewer(min_width=1, min_height=1).review(image)
 
