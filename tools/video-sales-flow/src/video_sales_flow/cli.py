@@ -10,6 +10,24 @@ from .engines import build_engine
 from .engines.google_flow import GoogleFlowEngine
 from .models import JobOptions, JobStatus, Motion, Tone
 from .service import JobService
+from .tryon import build_tryon_pipeline
+
+
+def _add_tryon_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--tryon-engine",
+        choices=["legacy", "mock", "gemini-web"],
+        help="Try-on image engine; legacy preserves the existing video-engine image path.",
+    )
+    parser.add_argument(
+        "--tryon-review-mode",
+        choices=["local", "gemini-web"],
+        help="Review approved try-on candidates locally or with an additional Gemini web review.",
+    )
+    parser.add_argument("--gemini-url", help="Gemini web URL override.")
+    parser.add_argument("--tryon-max-attempts", type=int, help="Maximum try-on regeneration attempts (1-5).")
+    parser.add_argument("--tryon-min-width", type=int, help="Minimum approved try-on image width.")
+    parser.add_argument("--tryon-min-height", type=int, help="Minimum approved try-on image height.")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -31,6 +49,14 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Use automated Playwright context instead of genuine native browser window.",
     )
+
+    gemini_login = subparsers.add_parser(
+        "gemini-login",
+        help="Open Gemini in the shared persistent Chromium profile for interactive sign-in/setup.",
+    )
+    gemini_login.add_argument("--profile-dir")
+    gemini_login.add_argument("--gemini-url")
+    gemini_login.add_argument("--browser-executable", help="Custom browser executable path.")
 
     generate = subparsers.add_parser("generate", help="Create a video-sales job.")
     generate.add_argument("--model", required=True, help="Model image path.")
@@ -67,6 +93,7 @@ def build_parser() -> argparse.ArgumentParser:
     generate.add_argument("--flow-url")
     generate.add_argument("--timeout-seconds", type=int)
     generate.add_argument("--browser-executable", help="Custom browser executable path.")
+    _add_tryon_arguments(generate)
 
     telegram = subparsers.add_parser(
         "telegram",
@@ -86,6 +113,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=25,
         help="Telegram getUpdates long-poll timeout in seconds (1-50).",
     )
+    _add_tryon_arguments(telegram)
 
     status = subparsers.add_parser("status", help="Print a persisted job manifest.")
     status.add_argument("job_id")
@@ -102,6 +130,8 @@ def _apply_common_overrides(settings: Settings, args: argparse.Namespace) -> Set
         updates["profile_dir"] = Path(args.profile_dir).expanduser().resolve()
     if getattr(args, "flow_url", None):
         updates["flow_url"] = args.flow_url
+    if getattr(args, "gemini_url", None):
+        updates["gemini_url"] = args.gemini_url
     if getattr(args, "max_videos", None) is not None:
         updates["max_videos"] = args.max_videos
     if getattr(args, "max_outfits", None) is not None:
@@ -110,6 +140,22 @@ def _apply_common_overrides(settings: Settings, args: argparse.Namespace) -> Set
         updates["timeout_seconds"] = args.timeout_seconds
     if getattr(args, "engine", None):
         updates["engine"] = args.engine
+    if getattr(args, "tryon_engine", None):
+        updates["tryon_engine"] = args.tryon_engine
+    if getattr(args, "tryon_review_mode", None):
+        updates["tryon_review_mode"] = args.tryon_review_mode
+    if getattr(args, "tryon_max_attempts", None) is not None:
+        if not 1 <= args.tryon_max_attempts <= 5:
+            raise ValueError("--tryon-max-attempts must be between 1 and 5")
+        updates["tryon_max_attempts"] = args.tryon_max_attempts
+    if getattr(args, "tryon_min_width", None) is not None:
+        if args.tryon_min_width < 1:
+            raise ValueError("--tryon-min-width must be at least 1")
+        updates["tryon_min_width"] = args.tryon_min_width
+    if getattr(args, "tryon_min_height", None) is not None:
+        if args.tryon_min_height < 1:
+            raise ValueError("--tryon-min-height must be at least 1")
+        updates["tryon_min_height"] = args.tryon_min_height
     if getattr(args, "browser_executable", None):
         updates["browser_executable"] = Path(args.browser_executable).expanduser().resolve()
     return replace(settings, **updates) if updates else settings
@@ -124,6 +170,12 @@ def main(argv: list[str] | None = None) -> int:
             GoogleFlowEngine(
                 settings=replace(settings, engine="google-flow", headless=False)
             ).login(use_native=not getattr(args, "use_playwright", False))
+            return 0
+
+        if args.command == "gemini-login":
+            from .tryon.gemini_web import GeminiWebClient
+
+            GeminiWebClient(settings=replace(settings, headless=False)).login()
             return 0
 
         if args.command == "status":
@@ -162,12 +214,14 @@ def main(argv: list[str] | None = None) -> int:
             background_style=args.background,
         )
         engine_name = args.engine or settings.engine
-        engine = build_engine(engine_name, replace(settings, engine=engine_name))
+        runtime_settings = replace(settings, engine=engine_name)
+        engine = build_engine(engine_name, runtime_settings)
         service = JobService(
-            output_root=settings.output_root,
+            output_root=runtime_settings.output_root,
             engine=engine,
-            max_videos=settings.max_videos,
-            max_outfits=settings.max_outfits,
+            max_videos=runtime_settings.max_videos,
+            max_outfits=runtime_settings.max_outfits,
+            tryon_pipeline=build_tryon_pipeline(runtime_settings),
         )
         manifest = service.run(
             model_image=Path(args.model),
