@@ -61,3 +61,35 @@ def test_api_rejects_job_above_local_video_guard(tmp_path: Path) -> None:
 
     assert response.status_code == 422
     assert "safety limit" in response.text
+
+
+def test_api_uses_configured_reviewed_tryon_pipeline(tmp_path: Path) -> None:
+    settings = Settings(
+        output_root=(tmp_path / "outputs").resolve(),
+        profile_dir=(tmp_path / "profile").resolve(),
+        engine="mock",
+        tryon_engine="mock",
+        tryon_min_width=1,
+        tryon_min_height=1,
+    )
+    client = TestClient(create_app(settings=settings, engine=MockEngine()))
+
+    response = client.post(
+        "/jobs",
+        data={"video_count": "1"},
+        files=[
+            ("model_image", ("model.jpg", b"model", "image/jpeg")),
+            ("outfit_images", ("shirt.png", b"shirt", "image/png")),
+        ],
+    )
+
+    assert response.status_code == 202
+    payload = client.get(f"/jobs/{response.json()['job_id']}").json()
+    approved = [
+        asset
+        for asset in payload["assets"]
+        if asset["asset_type"] == "edited_image" and asset["metadata"].get("stage") == "tryon"
+    ]
+    assert len(approved) == 1
+    assert approved[0]["metadata"]["approved"] is True
+    assert approved[0]["metadata"]["image_engine"] == "mock"
