@@ -16,15 +16,21 @@ from .tryon import build_tryon_pipeline
 def _add_tryon_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--tryon-engine",
-        choices=["legacy", "mock", "gemini-web"],
-        help="Try-on image engine; legacy preserves the existing video-engine image path.",
+        choices=["legacy", "mock", "gemini-web", "ai-studio-api"],
+        help=(
+            "Try-on image engine. ai-studio-api uses the official Google GenAI SDK; "
+            "gemini-web is kept for backwards compatibility."
+        ),
     )
     parser.add_argument(
         "--tryon-review-mode",
-        choices=["local", "gemini-web"],
-        help="Review approved try-on candidates locally or with an additional Google AI Studio review.",
+        choices=["local", "gemini-web", "ai-studio-api"],
+        help=(
+            "Review candidates locally, through the legacy AI Studio web flow, "
+            "or through the official AI Studio API."
+        ),
     )
-    parser.add_argument("--gemini-url", help="Google AI Studio URL override.")
+    parser.add_argument("--gemini-url", help="Google AI Studio URL override for gemini-web mode.")
     parser.add_argument("--tryon-max-attempts", type=int, help="Maximum try-on regeneration attempts (1-5).")
     parser.add_argument("--tryon-min-width", type=int, help="Minimum approved try-on image width.")
     parser.add_argument("--tryon-min-height", type=int, help="Minimum approved try-on image height.")
@@ -52,7 +58,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     gemini_login = subparsers.add_parser(
         "gemini-login",
-        help="Open Google AI Studio in the shared persistent Chromium profile for sign-in/setup.",
+        help="Open Google AI Studio in the shared persistent Chromium profile for legacy web setup.",
     )
     gemini_login.add_argument("--profile-dir")
     gemini_login.add_argument("--gemini-url")
